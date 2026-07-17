@@ -413,7 +413,6 @@ bot.on('message:text', async (ctx) => {
     await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
     return ctx.reply(`📌 *${args}*\n🔍 Pinterest:\nhttps://id.pinterest.com/search/pins/?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
   }
-  }
   if (cmd === 'cuaca') {
     const q = args || 'Jakarta';
     return ctx.reply(`🌤️ https://wttr.in/${encodeURIComponent(q)}?format=3`, { parse_mode: 'Markdown' });
