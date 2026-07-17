@@ -115,7 +115,7 @@ bot.on('message:text', async (ctx) => {
       const vurl = data?.download_quality_hd || data?.download_quality_sd;
       if (vurl) {
         try {
-          const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000 });
+          const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000, headers: { 'User-Agent': 'Mozilla/5.0' } });
           await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
           await ctx.replyWithVideo(Buffer.from(res.data), { caption: '📥 Facebook' });
           return;
@@ -144,7 +144,7 @@ bot.on('message:text', async (ctx) => {
       const vurl = data?.download_quality_hd || data?.download_quality_sd || data?.url || data?.download;
       if (vurl) {
         try {
-          const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000 });
+          const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000, headers: { 'User-Agent': 'Mozilla/5.0' } });
           await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
           await ctx.replyWithVideo(Buffer.from(res.data), { caption: '📥 Instagram' });
           return;
@@ -521,7 +521,7 @@ bot.on('callback_query:data', async (ctx) => {
     await ctx.editMessageText(`⏳ Downloading: ${f.filename}...`).catch(()=>{});
     const ext = f.filename.split('.').pop().toLowerCase();
     try {
-      const res = await axios.get(f.dlink, { responseType: 'arraybuffer', timeout: 60000 });
+      const res = await axios.get(f.dlink, { responseType: 'arraybuffer', timeout: 60000, headers: { 'Referer': 'https://www.terabox.com/', 'User-Agent': 'Mozilla/5.0' } });
       const buf = Buffer.from(res.data);
       if (['mp4','mov','mkv','webm'].includes(ext)) {
         await ctx.replyWithVideo(buf, { caption: f.filename.substring(0, 200) });
@@ -537,9 +537,10 @@ bot.on('callback_query:data', async (ctx) => {
         { parse_mode: 'Markdown', reply_markup: tbBuildKeyboard(cached.files, page) }
       ).catch(()=>{});
     } catch (e) {
+      const enc = encodeURIComponent(f.dlink);
       await ctx.editMessageText(
-        `❌ Gagal: *${f.filename}*\n\n📥 [Download Langsung](${f.dlink})`,
-        { parse_mode: 'Markdown' }
+        `❌ Download gagal (butuh cookies Terabox)\n\n📥 *Download via web:*\n[TeraboxDL](${f.dlink}) | [1024TeraDL](https://1024teradl.com/)\n\n_Pilih file lain:_`,
+        { parse_mode: 'Markdown', reply_markup: tbBuildKeyboard(cached.files, Math.floor(idx / 5)) }
       ).catch(()=>{});
     }
   }
