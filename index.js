@@ -102,15 +102,44 @@ bot.on('message:text', async (ctx) => {
   const args = parts.slice(1).join(' ');
 
   // ── DOWNLOADER ──
-  if (['fb','ig','tt','ytmp3','tb'].includes(cmd)) {
+  if (['fb','ig','ytmp3','tb'].includes(cmd)) {
     if (!args) return ctx.reply(`📥 *${cmd} [url]*`, { parse_mode: 'Markdown' });
     if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL yang valid!\nContoh: `' + cmd + ' https://...`', { parse_mode: 'Markdown' });
     const msg = await ctx.reply('⏳ Downloading...');
-    const eps = { fb:'/api/facebook', ig:'/api/instagram', tt:'/api/tiktok', ytmp3:'/api/download', tb:'/terabox' };
+    const eps = { fb:'/api/facebook', ig:'/api/instagram', ytmp3:'/api/download', tb:'/terabox' };
     const r = await dl(args, eps[cmd]);
     await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-    return ctx.reply(r.substring(0, 3900));
+    return ctx.reply(r.substring(0, 3900), { parse_mode: 'Markdown', link_preview_options: { is_disabled: false } });
   }
+
+  // ── TIKTOK (via tikwm.com - kirim video langsung) ──
+  if (cmd === 'tt') {
+    if (!args) return ctx.reply('📥 *tt [url tiktok]*', { parse_mode: 'Markdown' });
+    if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL TikTok yang valid!', { parse_mode: 'Markdown' });
+    const msg = await ctx.reply('⏳ Downloading TikTok...');
+    try {
+      const d = await j(`https://www.tikwm.com/api/?url=${encodeURIComponent(args)}`);
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      if (d?.code === 0 && d?.data?.play) {
+        const v = d.data;
+        try {
+          await ctx.replyWithVideo(v.play, {
+            caption: `🎵 *TikTok*\n👤 @${v.author?.nickname || '?'}\n${v.title || ''}`.substring(0, 1024),
+            parse_mode: 'Markdown',
+          });
+          return;
+        } catch {
+          return ctx.reply(`🎵 *TikTok*\n👤 @${v.author?.nickname || '?'}\n${v.title || ''}\n\n📥 [Download Video](${v.play})`, { parse_mode: 'Markdown' });
+        }
+      }
+      return ctx.reply(`❌ Gagal download TikTok.\n🔗 ${args}`);
+    } catch (e) {
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      return ctx.reply(`❌ Error. Coba lagi nanti.\n🔗 ${args}`);
+    }
+  }
+
+  // ── SONG ──
   if (cmd === 'song') {
     if (!args) return ctx.reply('🎵 *song [judul lagu]*\nContoh: `song hello adele`', { parse_mode: 'Markdown' });
     const msg = await ctx.reply('🎵 Mencari...');
