@@ -1,6 +1,12 @@
 import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
+
+// Polyfill: ensure global crypto is available for Baileys
+if (!globalThis.crypto) {
+  globalThis.crypto = crypto;
+}
 
 dotenv.config();
 
