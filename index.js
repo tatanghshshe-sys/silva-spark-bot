@@ -2,6 +2,7 @@ import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeys
 import pino from 'pino';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import http from 'http';
 
 // Polyfill: ensure global crypto is available for Baileys
 if (!globalThis.crypto) {
@@ -12,6 +13,24 @@ dotenv.config();
 
 const logger = pino({ level: 'silent' });
 const SESSION_DIR = process.env.SESSION_DIR || './sessions';
+const PORT = process.env.PORT || 3000;
+
+let botStatus = 'starting';
+
+// Simple HTTP server for health check
+const server = http.createServer((req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: botStatus, name: 'Silva Spark MD', version: '2.0.1', timestamp: new Date().toISOString() }));
+  } else {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<!DOCTYPE html><html><head><title>Silva Spark MD</title></head><body style="background:#0f0c29;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>🤖 Silva Spark MD</h1><p>Status: ${botStatus}</p><p>v2.0.1 | LUPI CEBOL</p></div></body></html>`);
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`🌐 HTTP server listening on port ${PORT}`);
+});
 
 // ── Bot Features ──
 const MENU_TEXT = `🤖 *SILVA SPARK MD v2.0.1*
@@ -65,11 +84,13 @@ async function startBot() {
     }
 
     if (connection === 'open') {
+      botStatus = 'connected';
       console.log('✅ Silva Spark MD terhubung ke WhatsApp!');
       console.log(`🤖 Bot Name: ${sock.user?.name || 'Unknown'}`);
     }
 
     if (connection === 'close') {
+      botStatus = 'disconnected';
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const reasonMsg = lastDisconnect?.error?.message || 'unknown';
       console.log(`[conn.close] StatusCode=${statusCode} Reason=${reasonMsg}`);
