@@ -1,6 +1,7 @@
-import { Bot } from 'grammy';
+import { Bot, InlineKeyboard } from 'grammy';
 import http from 'http';
 import axios from 'axios';
+import { Buffer } from 'buffer';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -14,6 +15,9 @@ const bot = new Bot(BOT_TOKEN);
 
 // Quiz state: chatId → { correct: 'A'|'B'|'C'|'D', question: string }
 const quizState = new Map();
+
+// Terabox cache: msgId → { files: [{filename, size, dlink}], expires: timestamp }
+const tbCache = new Map();
 
 // ═══ HELPERS ═══
 async function dl(u, ep) {
@@ -212,58 +216,29 @@ bot.on('message:text', async (ctx) => {
     }
   }
 
-  // ── TERABOX (download buffer → kirim langsung) ──
+  // ── TERABOX (menu inline keyboard) ──
   if (cmd === 'tb') {
     if (!args) return ctx.reply('📦 *tb [url terabox]*', { parse_mode: 'Markdown' });
     if (!args.startsWith('http')) return ctx.reply('📦 Masukkan URL Terabox yang valid!', { parse_mode: 'Markdown' });
-    const msg = await ctx.reply('⏳ Downloading Terabox...');
+    const msg = await ctx.reply('⏳ Mengambil daftar file...');
     try {
       const { data } = await axios.get(`${KT}/terabox?url=${encodeURIComponent(args)}`, { timeout: 30000 });
-      if (!data?.files?.length) {
-        await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-        return ctx.reply('❌ File tidak ditemukan.\n🔗 ' + args);
-      }
-      await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `📦 ${data.files.length} file. Mengirim...`).catch(()=>{});
-      const vids = data.files.filter(f => /\.(mp4|mov|mkv)$/i.test(f.filename));
-      const imgs = data.files.filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f.filename));
-      let sent = 0, failed = 0;
-      const MAX = 5; // max files to send
-
-      // ── Kirim Video (download buffer) ──
-      for (const f of vids.slice(0, MAX)) {
-        if (f.size > 45*1024*1024) { failed++; continue; } // skip >45MB
-        try {
-          const res = await axios.get(f.dlink, { responseType: 'arraybuffer', timeout: 45000 });
-          await ctx.replyWithVideo(Buffer.from(res.data), { caption: f.filename.substring(0, 200) });
-          sent++;
-        } catch { failed++; }
-        await new Promise(r => setTimeout(r, 400));
-      }
-      // ── Kirim Foto (download buffer) ──
-      for (const f of imgs.slice(0, MAX)) {
-        if (f.size > 10*1024*1024) { failed++; continue; }
-        try {
-          const res = await axios.get(f.dlink, { responseType: 'arraybuffer', timeout: 30000 });
-          await ctx.replyWithPhoto(Buffer.from(res.data), { caption: f.filename.substring(0, 200) });
-          sent++;
-        } catch { failed++; }
-        await new Promise(r => setTimeout(r, 300));
-      }
-      // ── Summary ──
-      let txt = `📦 *TeraBox: ${data.total_files||data.files.length} file(s)*`;
-      if (sent > 0) txt += `\n✅ ${sent} terkirim`;
-      if (failed > 0) txt += ` | ❌ ${failed} gagal`;
-      txt += `\n\n📥 *Link semua file:*\n`;
-      data.files.slice(0, 10).forEach((f,i) => {
-        const mb = f.size ? (f.size/1024/1024).toFixed(1) : '?';
-        txt += `\n*${i+1}.* [${f.filename}](${f.dlink}) — ${mb}MB`;
-      });
-      if (data.files.length > 10) txt += `\n_...dan ${data.files.length-10} lainnya_`;
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      return ctx.reply(txt.substring(0, 3900), { parse_mode: 'Markdown', link_preview_options: { is_disabled: true } });
+      if (!data?.files?.length) return ctx.reply('❌ File tidak ditemukan.\n🔗 ' + args);
+
+      const files = data.files;
+      const total = data.total_files || files.length;
+      const pages = Math.ceil(files.length / 5);
+
+      const sent = await ctx.reply(
+        `📦 *TeraBox: ${total} file(s)*\n\n_Pilih file yang mau didownload:_\nHalaman 1/${pages}`,
+        { parse_mode: 'Markdown', reply_markup: tbBuildKeyboard(files, 0) }
+      );
+
+      tbCache.set(sent.message_id, { files, expires: Date.now() + 300000 });
     } catch (e) {
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      return ctx.reply(`❌ Error download.\n🔗 ${args}`);
+      return ctx.reply(`❌ Gagal ambil daftar file.\n🔗 ${args}`);
     }
   }
 
@@ -485,6 +460,89 @@ bot.on('message:text', async (ctx) => {
     'malam':'Malam! 🌙', 'pagi':'Pagi! ☀️',
   };
   if (AUTO[cmd]) return ctx.reply(AUTO[cmd], { parse_mode: 'Markdown' });
+});
+
+// ═══ TERABOX CALLBACK ═══
+function tbBuildKeyboard(files, page) {
+  const pages = Math.ceil(files.length / 5);
+  const kb = new InlineKeyboard();
+  const start = page * 5;
+  const chunk = files.slice(start, start + 5);
+  chunk.forEach((f, i) => {
+    const idx = start + i;
+    const mb = f.size ? (f.size/1024/1024).toFixed(1) : '?';
+    const ext = f.filename.split('.').pop().toLowerCase();
+    const icon = ['mp4','mov','mkv','webm'].includes(ext) ? '🎬' : ['jpg','jpeg','png','webp'].includes(ext) ? '🖼️' : '📎';
+    kb.text(`${icon} ${f.filename.substring(0, 25)} (${mb}MB)`, `tb_dl_${idx}`).row();
+  });
+  if (pages > 1) {
+    const nav = [];
+    if (page > 0) nav.push(InlineKeyboard.text('⬅️', `tb_pg_${page-1}`));
+    nav.push(InlineKeyboard.text(`${page+1}/${pages}`, 'tb_noop'));
+    if (page < pages - 1) nav.push(InlineKeyboard.text('➡️', `tb_pg_${page+1}`));
+    kb.row(...nav);
+  }
+  return kb;
+}
+
+bot.on('callback_query:data', async (ctx) => {
+  const d = ctx.callbackQuery.data;
+  const msgId = ctx.callbackQuery.message?.message_id;
+  await ctx.answerCallbackQuery().catch(()=>{});
+
+  // ── Page Navigation ──
+  if (d.startsWith('tb_pg_')) {
+    const page = parseInt(d.split('_')[2]);
+    const cached = tbCache.get(msgId);
+    if (!cached || cached.expires < Date.now()) {
+      tbCache.delete(msgId);
+      return ctx.editMessageText('⏰ Sesi expired. Ketik *tb* lagi.', { parse_mode: 'Markdown' }).catch(()=>{});
+    }
+    const { files } = cached;
+    const pages = Math.ceil(files.length / 5);
+    return ctx.editMessageText(
+      `📦 *TeraBox: ${files.length} file(s)*\n\n_Pilih file:_\nHalaman ${page+1}/${pages}`,
+      { parse_mode: 'Markdown', reply_markup: tbBuildKeyboard(files, page) }
+    ).catch(()=>{});
+  }
+
+  if (d === 'tb_noop') return;
+
+  // ── Download File ──
+  if (d.startsWith('tb_dl_')) {
+    const idx = parseInt(d.split('_')[2]);
+    const cached = tbCache.get(msgId);
+    if (!cached || cached.expires < Date.now()) {
+      tbCache.delete(msgId);
+      return ctx.editMessageText('⏰ Sesi expired. Ketik *tb* lagi.', { parse_mode: 'Markdown' }).catch(()=>{});
+    }
+    const f = cached.files[idx];
+    if (!f) return;
+    await ctx.editMessageText(`⏳ Downloading: ${f.filename}...`).catch(()=>{});
+    const ext = f.filename.split('.').pop().toLowerCase();
+    try {
+      const res = await axios.get(f.dlink, { responseType: 'arraybuffer', timeout: 60000 });
+      const buf = Buffer.from(res.data);
+      if (['mp4','mov','mkv','webm'].includes(ext)) {
+        await ctx.replyWithVideo(buf, { caption: f.filename.substring(0, 200) });
+      } else if (['jpg','jpeg','png','webp'].includes(ext)) {
+        await ctx.replyWithPhoto(buf, { caption: f.filename.substring(0, 200) });
+      } else {
+        await ctx.replyWithDocument(buf, { caption: f.filename.substring(0, 200) });
+      }
+      const page = Math.floor(idx / 5);
+      const pages = Math.ceil(cached.files.length / 5);
+      await ctx.editMessageText(
+        `📦 *TeraBox: ${cached.files.length} file(s)*\n✅ *${f.filename}* terkirim!\n\n_Pilih file lain:_`,
+        { parse_mode: 'Markdown', reply_markup: tbBuildKeyboard(cached.files, page) }
+      ).catch(()=>{});
+    } catch (e) {
+      await ctx.editMessageText(
+        `❌ Gagal: *${f.filename}*\n\n📥 [Download Langsung](${f.dlink})`,
+        { parse_mode: 'Markdown' }
+      ).catch(()=>{});
+    }
+  }
 });
 
 // ═══ HTTP ═══
