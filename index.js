@@ -19,15 +19,49 @@ const quizState = new Map();
 async function dl(u, ep) {
   try {
     const { data } = await axios.get(`${KT}${ep}?url=${encodeURIComponent(u)}`, { timeout: 30000 });
-    if (data?.download_quality_hd) return `📥 *HD:* ${data.download_quality_hd}\n${data.download_quality_sd ? '📥 *SD:* '+data.download_quality_sd : ''}\n${data.download_audio ? '🎵 *Audio:* '+data.download_audio : ''}`;
-    if (data?.url) return data.url;
-    if (data?.result?.url) return data.result.url;
-    if (data?.download) return data.download;
-    if (data?.status === 'error') return `❌ ${data.description || data.error || 'Gagal download.'}\n🔗 ${u}`;
-    if (data?.success === false) return `❌ ${data.error || 'Gagal.'}\n🔗 ${u}`;
+
+    // ── Facebook / Instagram ──
+    if (data?.download_quality_hd || data?.download_quality_sd) {
+      let r = '';
+      if (data.download_quality_hd) r += `📥 *HD:* [Klik Download](${data.download_quality_hd})\n`;
+      if (data.download_quality_sd) r += `📥 *SD:* [Klik Download](${data.download_quality_sd})\n`;
+      if (data.download_audio) r += `🎵 *Audio:* [Klik Download](${data.download_audio})\n`;
+      if (data.thumbnail) r += `🖼️ [Thumbnail](${data.thumbnail})`;
+      return r || '✅ Download siap!';
+    }
+
+    // ── TeraBox ──
+    if ((data?.source === 'TeraCroot' || data?.status === 'success') && data?.files) {
+      const count = data.total_files || data.files.length;
+      let r = `📦 *TeraBox: ${count} file(s)*\n\n`;
+      data.files.slice(0, 8).forEach((f, i) => {
+        const mb = f.size ? (f.size/1024/1024).toFixed(1) : '?';
+        r += `*${i+1}.* ${f.filename}\n📥 [Download](${f.dlink})\n📏 ${mb} MB\n\n`;
+      });
+      if (count > 8) r += `_...dan ${count-8} file lainnya_\n`;
+      return r;
+    }
+
+    // ── TikTok ──
+    if (data?.ok === true || data?.type?.includes('TIK')) {
+      const desc = (data.video?.desc || data.title || '').substring(0, 150);
+      const user = data.from_url?.username || '?';
+      let r = `🎵 *TikTok*\n👤 @${user}`;
+      if (desc) r += `\n📝 ${desc}`;
+      if (data.video?.duration) r += `\n⏱ ${data.video.duration}s`;
+      r += `\n🔗 ${data.resolved_url || u}`;
+      if (data.thumbnail) r += `\n🖼️ [Thumbnail](${data.thumbnail})`;
+      return r;
+    }
+
+    // ── Generic: return raw string if available ──
+    if (data?.url) return `📥 [Download](${data.url})`;
+    if (data?.download) return `📥 [Download](${data.download})`;
     if (typeof data === 'string') return data.substring(0, 3800);
-    return JSON.stringify(data).substring(0, 3800);
-  } catch (e) { return `❌ Gagal. Coba lagi.\n🔗 ${u}`; }
+
+    // Fallback
+    return `✅ Berhasil!\n🔗 ${u}`;
+  } catch (e) { return `❌ Gagal download.\n🔗 ${u}`; }
 }
 async function j(url) { try { return (await axios.get(url, { timeout: 12000 })).data; } catch { return null; } }
 
