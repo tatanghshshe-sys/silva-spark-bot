@@ -3,6 +3,7 @@
   "version": "2.0.1",
   "description": "Silva Spark MD - WhatsApp & Telegram Multi-Device Bot",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
