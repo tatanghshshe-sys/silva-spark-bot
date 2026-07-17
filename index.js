@@ -16,12 +16,15 @@ const bot = new Bot(BOT_TOKEN);
 async function dl(u, ep) {
   try {
     const { data } = await axios.get(`${KT}${ep}?url=${encodeURIComponent(u)}`, { timeout: 30000 });
+    if (data?.download_quality_hd) return `📥 *HD:* ${data.download_quality_hd}\n${data.download_quality_sd ? '📥 *SD:* '+data.download_quality_sd : ''}\n${data.download_audio ? '🎵 *Audio:* '+data.download_audio : ''}`;
     if (data?.url) return data.url;
     if (data?.result?.url) return data.result.url;
     if (data?.download) return data.download;
+    if (data?.status === 'error') return `❌ ${data.description || data.error || 'Gagal download.'}\n🔗 ${u}`;
+    if (data?.success === false) return `❌ ${data.error || 'Gagal.'}\n🔗 ${u}`;
     if (typeof data === 'string') return data.substring(0, 3800);
     return JSON.stringify(data).substring(0, 3800);
-  } catch (e) { return `❌ Gagal. Coba lagi.\n${u}`; }
+  } catch (e) { return `❌ Gagal. Coba lagi.\n🔗 ${u}`; }
 }
 async function j(url) { try { return (await axios.get(url, { timeout: 12000 })).data; } catch { return null; } }
 
@@ -164,8 +167,8 @@ bot.on('message:text', async (ctx) => {
   }
   if (cmd === 'quote') {
     try {
-      const d = await j('https://api.quotable.io/random?maxLength=120');
-      if (d?.content) return ctx.reply(`💬 *"${d.content}"*\n— _${d.author}_`, { parse_mode: 'Markdown' });
+      const d = await j('https://zenquotes.io/api/random');
+      if (d?.[0]?.q) return ctx.reply(`💬 *"${d[0].q}"*\n— _${d[0].a}_`, { parse_mode: 'Markdown' });
     } catch {}
     return ctx.reply('💬 *"Hidup cuma sekali. Jangan banyak drama."*\n— Anonymous');
   }
