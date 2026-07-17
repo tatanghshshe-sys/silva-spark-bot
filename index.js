@@ -1,15 +1,10 @@
 import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
-import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import dotenv from 'dotenv';
-
-const { toDataURL } = qrcode;
 
 dotenv.config();
 
 const logger = pino({ level: 'silent' });
-
-// ── Session Store ──
 const SESSION_DIR = process.env.SESSION_DIR || './sessions';
 
 // ── Bot Features ──
@@ -26,7 +21,6 @@ Halo! Aku Silva Spark, bot WhatsApp multi-device!
 
 ⚡ Powered by Baileys MD | LUPI CEBOL`;
 
-// ── Auto-Reply Messages ──
 const AUTO_REPLIES = {
   'p': 'Hadir bos! 🫡',
   'ping': 'Pong! 🏓 Bot aktif nih...',
@@ -39,26 +33,29 @@ const AUTO_REPLIES = {
 
 // ── Initialize ──
 async function startBot() {
+  console.log('[startBot] Reading auth state...');
   const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
+  console.log('[startBot] Auth state loaded. Creating socket...');
 
   const sock = makeWASocket({
     auth: state,
     logger,
-    printQRInTerminal: false,
+    printQRInTerminal: true,
     browser: ['Silva Spark MD', 'Chrome', '2.0.1'],
+    connectTimeoutMs: 60000,
+    keepAliveIntervalMs: 25000,
   });
 
-  // QR Code handler
-  sock.ev.on('connection.update', ({ qr, connection, lastDisconnect }) => {
+  console.log('[startBot] Socket created. Waiting for connection.update events...');
+
+  // Connection & QR handler
+  sock.ev.on('connection.update', (update) => {
+    const { qr, connection, lastDisconnect, isNewLogin } = update;
+    console.log(`[conn.update] connection=${connection} qr=${!!qr} isNewLogin=${isNewLogin}`);
+
     if (qr) {
-      console.log('\n📱 Scan QR Code below to connect WhatsApp:\n');
-      toDataURL(qr, (err, url) => {
-        if (err) {
-          console.log('QR Error:', err);
-        } else {
-          console.log(url);
-        }
-      });
+      console.log('\n📱 === SCAN QR CODE BELOW ===\n');
+      // QR is auto-printed by printQRInTerminal
     }
 
     if (connection === 'open') {
@@ -67,14 +64,18 @@ async function startBot() {
     }
 
     if (connection === 'close') {
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('⚠️ Koneksi terputus. Reconnect:', shouldReconnect);
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const reasonMsg = lastDisconnect?.error?.message || 'unknown';
+      console.log(`[conn.close] StatusCode=${statusCode} Reason=${reasonMsg}`);
+      
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      console.log(`[conn.close] Should reconnect: ${shouldReconnect}`);
 
       if (shouldReconnect) {
-        console.log('🔄 Mencoba reconnect dalam 5 detik...');
+        console.log('🔄 Reconnecting in 5s...');
         setTimeout(startBot, 5000);
       } else {
-        console.log('❌ Logged out. Hapus folder sessions untuk pairing ulang.');
+        console.log('❌ LOGGED OUT - Delete /app/sessions folder and redeploy');
       }
     }
   });
@@ -83,27 +84,20 @@ async function startBot() {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
       if (!msg.message || msg.key.fromMe) continue;
-
       const chat = msg.key.remoteJid;
       const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-
       if (!text) continue;
 
-      // Log message
       const sender = msg.pushName || 'Unknown';
       console.log(`📩 [${sender}] ${text}`);
 
-      // Command handler
       const cmd = text.toLowerCase().trim();
-
       if (cmd === '/ping' || cmd === 'ping') {
         await sock.sendMessage(chat, { text: 'Pong! 🏓 Silva Spark MD v2.0.1 aktif!' });
       } else if (cmd === '/menu' || cmd === 'menu' || cmd === 'help' || cmd === '/help') {
         await sock.sendMessage(chat, { text: MENU_TEXT });
       } else if (cmd === '/owner' || cmd === 'owner') {
         await sock.sendMessage(chat, { text: 'Owner: *LUPI CEBOL* 👑' });
-      } else if (cmd === '/donate' || cmd === 'donate') {
-        await sock.sendMessage(chat, { text: '⭐ Star repo: https://github.com/tatanghshshe-sys/silva-spark-bot' });
       } else if (AUTO_REPLIES[cmd]) {
         await sock.sendMessage(chat, { text: AUTO_REPLIES[cmd] });
       }
@@ -123,6 +117,7 @@ console.log(`
 `);
 
 startBot().catch(err => {
-  console.error('❌ Bot error:', err);
+  console.error('❌ Bot FATAL error:', err.message);
+  console.error('Stack:', err.stack);
   process.exit(1);
 });
