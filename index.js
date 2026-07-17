@@ -101,12 +101,12 @@ bot.on('message:text', async (ctx) => {
   const cmd = parts[0].toLowerCase();
   const args = parts.slice(1).join(' ');
 
-  // ── DOWNLOADER ──
-  if (['fb','ig','ytmp3','tb'].includes(cmd)) {
+  // ── DOWNLOADER (fb, ig, ytmp3) ──
+  if (['fb','ig','ytmp3'].includes(cmd)) {
     if (!args) return ctx.reply(`📥 *${cmd} [url]*`, { parse_mode: 'Markdown' });
     if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL yang valid!\nContoh: `' + cmd + ' https://...`', { parse_mode: 'Markdown' });
     const msg = await ctx.reply('⏳ Downloading...');
-    const eps = { fb:'/api/facebook', ig:'/api/instagram', ytmp3:'/api/download', tb:'/terabox' };
+    const eps = { fb:'/api/facebook', ig:'/api/instagram', ytmp3:'/api/download' };
     const r = await dl(args, eps[cmd]);
     await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
     return ctx.reply(r.substring(0, 3900), { parse_mode: 'Markdown', link_preview_options: { is_disabled: false } });
@@ -136,6 +136,57 @@ bot.on('message:text', async (ctx) => {
     } catch (e) {
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
       return ctx.reply(`❌ Error. Coba lagi nanti.\n🔗 ${args}`);
+    }
+  }
+
+  // ── TERABOX (kirim video langsung) ──
+  if (cmd === 'tb') {
+    if (!args) return ctx.reply('📦 *tb [url terabox]*', { parse_mode: 'Markdown' });
+    if (!args.startsWith('http')) return ctx.reply('📦 Masukkan URL Terabox yang valid!', { parse_mode: 'Markdown' });
+    const msg = await ctx.reply('⏳ Downloading Terabox...');
+    try {
+      const { data } = await axios.get(`${KT}/terabox?url=${encodeURIComponent(args)}`, { timeout: 30000 });
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      if ((data?.source === 'TeraCroot' || data?.status === 'success') && data?.files?.length) {
+        const vids = data.files.filter(f => /\.(mp4|mov|mkv|webm|avi)$/i.test(f.filename));
+        const imgs = data.files.filter(f => /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(f.filename));
+        const rest = data.files.filter(f => !vids.includes(f) && !imgs.includes(f));
+        let sent = 0;
+        // ── Kirim Video ──
+        for (const f of vids) {
+          try {
+            await ctx.replyWithVideo(f.dlink, { caption: f.filename.substring(0, 200) });
+            sent++;
+            await new Promise(r => setTimeout(r, 500));
+          } catch {}
+        }
+        // ── Kirim Foto ──
+        for (const f of imgs) {
+          try {
+            await ctx.replyWithPhoto(f.dlink, { caption: f.filename.substring(0, 200) });
+            sent++;
+            await new Promise(r => setTimeout(r, 300));
+          } catch {}
+        }
+        // ── Sisa: link ──
+        if (rest.length > 0 || sent < data.files.length) {
+          const unsent = data.files.filter((_,i) => !vids.slice(0,sent).includes(data.files[i]) && !imgs.slice(0,sent).includes(data.files[i]));
+          let txt = `📦 *TeraBox: ${data.total_files||data.files.length} file(s)*`;
+          if (sent > 0) txt += `\n✅ ${sent} file terkirim\n`;
+          txt += `\n📥 *Link Download:*\n`;
+          data.files.slice(0, 10).forEach((f,i) => {
+            const mb = f.size ? (f.size/1024/1024).toFixed(1) : '?';
+            txt += `\n*${i+1}.* [${f.filename}](${f.dlink}) — ${mb}MB`;
+          });
+          if (data.files.length > 10) txt += `\n_...dan ${data.files.length-10} lainnya_`;
+          return ctx.reply(txt.substring(0, 3900), { parse_mode: 'Markdown', link_preview_options: { is_disabled: true } });
+        }
+        if (sent > 0) return; // all sent
+      }
+      return ctx.reply(`❌ Gagal ambil file.\n🔗 ${args}`);
+    } catch (e) {
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      return ctx.reply(`❌ Error download.\n🔗 ${args}`);
     }
   }
 
