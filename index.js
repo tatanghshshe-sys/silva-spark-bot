@@ -101,16 +101,87 @@ bot.on('message:text', async (ctx) => {
   const cmd = parts[0].toLowerCase();
   const args = parts.slice(1).join(' ');
 
-  // ── DOWNLOADER (fb, ig, ytmp3) ──
-  if (['fb','ig','ytmp3'].includes(cmd)) {
-    if (!args) return ctx.reply(`📥 *${cmd} [url]*`, { parse_mode: 'Markdown' });
-    if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL yang valid!\nContoh: `' + cmd + ' https://...`', { parse_mode: 'Markdown' });
-    const msg = await ctx.reply('⏳ Downloading...');
-    const eps = { fb:'/api/facebook', ig:'/api/instagram', ytmp3:'/api/download' };
-    const r = await dl(args, eps[cmd]);
-    await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-    return ctx.reply(r.substring(0, 3900), { parse_mode: 'Markdown', link_preview_options: { is_disabled: false } });
+  // ── FACEBOOK (kirim video langsung) ──
+  if (cmd === 'fb') {
+    if (!args) return ctx.reply('📥 *fb [url facebook]*', { parse_mode: 'Markdown' });
+    if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL Facebook yang valid!', { parse_mode: 'Markdown' });
+    const msg = await ctx.reply('⏳ Downloading FB...');
+    try {
+      const { data } = await axios.get(`${KT}/api/facebook?url=${encodeURIComponent(args)}`, { timeout: 30000 });
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      // Try sending video directly
+      if (data?.download_quality_hd) {
+        try { await ctx.replyWithVideo(data.download_quality_hd, { caption: '📥 Facebook HD' }); return; } catch {}
+      }
+      if (data?.download_quality_sd) {
+        try { await ctx.replyWithVideo(data.download_quality_sd, { caption: '📥 Facebook SD' }); return; } catch {}
+      }
+      // Fallback: show download links
+      let r = '';
+      if (data?.download_quality_hd) r += `📥 *HD:* [Klik Download](${data.download_quality_hd})\n`;
+      if (data?.download_quality_sd) r += `📥 *SD:* [Klik Download](${data.download_quality_sd})\n`;
+      if (data?.download_audio) r += `🎵 *Audio:* [Klik Download](${data.download_audio})\n`;
+      if (r) return ctx.reply(r, { parse_mode: 'Markdown' });
+      if (data?.status === 'error') return ctx.reply(`❌ ${data.description || 'Gagal download FB.'}\n🔗 ${args}`);
+      return ctx.reply(`❌ Gagal.\n🔗 ${args}`);
+    } catch (e) {
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      return ctx.reply(`❌ Error.\n🔗 ${args}`);
+    }
   }
+
+  // ── INSTAGRAM (kirim video langsung) ──
+  if (cmd === 'ig') {
+    if (!args) return ctx.reply('📥 *ig [url instagram]*', { parse_mode: 'Markdown' });
+    if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL Instagram yang valid!', { parse_mode: 'Markdown' });
+    const msg = await ctx.reply('⏳ Downloading IG...');
+    try {
+      const { data } = await axios.get(`${KT}/api/instagram?url=${encodeURIComponent(args)}`, { timeout: 30000 });
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      // Try sending video directly
+      const vurl = data?.download_quality_hd || data?.download_quality_sd || data?.url || data?.download;
+      if (vurl) {
+        try { await ctx.replyWithVideo(vurl, { caption: '📥 Instagram' }); return; } catch {}
+      }
+      // Fallback: show links
+      let r = '';
+      if (data?.download_quality_hd) r += `📥 *HD:* [Klik Download](${data.download_quality_hd})\n`;
+      if (data?.download_quality_sd) r += `📥 *SD:* [Klik Download](${data.download_quality_sd})\n`;
+      if (data?.url) r += `📥 [Download](${data.url})\n`;
+      if (r) return ctx.reply(r, { parse_mode: 'Markdown' });
+      if (data?.error || data?.ok === false) return ctx.reply(`❌ ${data.error || 'Gagal download IG.'}\n🔗 ${args}`);
+      return ctx.reply(`❌ Gagal.\n🔗 ${args}`);
+    } catch (e) {
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      return ctx.reply(`❌ Error.\n🔗 ${args}`);
+    }
+  }
+
+  // ── YOUTUBE MP3 (kirim audio langsung) ──
+  if (cmd === 'ytmp3') {
+    if (!args) return ctx.reply('📥 *ytmp3 [url youtube]*', { parse_mode: 'Markdown' });
+    if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL YouTube yang valid!', { parse_mode: 'Markdown' });
+    const msg = await ctx.reply('⏳ Downloading YT MP3...');
+    try {
+      const { data } = await axios.get(`${KT}/api/download?url=${encodeURIComponent(args)}`, { timeout: 30000 });
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      // Try sending audio/video directly
+      const durl = data?.download || data?.url || data?.download_quality_hd;
+      if (durl) {
+        try { await ctx.replyWithAudio(durl, { caption: '🎵 YouTube MP3' }); return; } catch {}
+        try { await ctx.replyWithVideo(durl, { caption: '📥 YouTube' }); return; } catch {}
+      }
+      // Fallback: show link
+      if (durl) return ctx.reply(`📥 [Download MP3](${durl})\n🔗 ${args}`, { parse_mode: 'Markdown' });
+      if (data?.success === false) return ctx.reply(`❌ ${data.error || 'Gagal.'}\n\n📥 Download manual: https://ytmp3.cc/`);
+      return ctx.reply(`❌ Gagal download.\n🔗 ${args}`);
+    } catch (e) {
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      return ctx.reply(`❌ Error. Gunakan: https://ytmp3.cc/`);
+    }
+  }
+
+  // ── GENERIC DOWNLOADER (none left, kept as placeholder) ──
 
   // ── TIKTOK (via tikwm.com - kirim video langsung) ──
   if (cmd === 'tt') {
