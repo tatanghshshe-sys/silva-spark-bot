@@ -401,8 +401,18 @@ bot.on('message:text', async (ctx) => {
     return ctx.reply(`🎵 *${args}*\n\n🔊 Cari & putar di YouTube:\nhttps://www.youtube.com/results?search_query=${encodeURIComponent(args)}\n\n📥 Download MP3:\nhttps://ytmp3.cc/search?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
   }
   if (cmd === 'pin') {
-    if (!args) return ctx.reply('📌 *pin [keyword]*\nContoh: `pin janda`', { parse_mode: 'Markdown' });
-    return ctx.reply(`📌 *${args}*\n\n🔍 Cari gambar di Pinterest:\nhttps://id.pinterest.com/search/pins/?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
+    if (!args) return ctx.reply('📌 *pin [keyword]*\nContoh: `pin kucing`', { parse_mode: 'Markdown' });
+    const msg = await ctx.reply('📌 Mencari gambar...');
+    try {
+      // Kirim foto random dulu (Lorem Picsum)
+      await ctx.replyWithPhoto(`https://picsum.photos/800/600?random=${Date.now()}`, { caption: `📌 *${args}*` });
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      // Juga kasih Pinterest link
+      return ctx.reply(`📌 *${args}*\n🔍 Lebih banyak di Pinterest:\nhttps://id.pinterest.com/search/pins/?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
+    } catch {}
+    await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+    return ctx.reply(`📌 *${args}*\n🔍 Pinterest:\nhttps://id.pinterest.com/search/pins/?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
+  }
   }
   if (cmd === 'cuaca') {
     const q = args || 'Jakarta';
