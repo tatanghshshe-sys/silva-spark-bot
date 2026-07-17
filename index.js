@@ -397,12 +397,12 @@ bot.on('message:text', async (ctx) => {
     return ctx.reply(`📖 https://alkitab.app/search/${encodeURIComponent(q)}`, { parse_mode: 'Markdown' });
   }
   if (cmd === 'play') {
-    if (!args) return ctx.reply('🎵 *play [judul]*', { parse_mode: 'Markdown' });
-    return ctx.reply(`🎵 https://www.youtube.com/results?search_query=${encodeURIComponent(args)}+audio`);
+    if (!args) return ctx.reply('🎵 *play [judul]*\nContoh: `play dj cek sound`', { parse_mode: 'Markdown' });
+    return ctx.reply(`🎵 *${args}*\n\n🔊 Cari & putar di YouTube:\nhttps://www.youtube.com/results?search_query=${encodeURIComponent(args)}\n\n📥 Download MP3:\nhttps://ytmp3.cc/search?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
   }
   if (cmd === 'pin') {
-    if (!args) return ctx.reply('📌 *pin [keyword]*', { parse_mode: 'Markdown' });
-    return ctx.reply(`📌 https://id.pinterest.com/search/pins/?q=${encodeURIComponent(args)}`);
+    if (!args) return ctx.reply('📌 *pin [keyword]*\nContoh: `pin janda`', { parse_mode: 'Markdown' });
+    return ctx.reply(`📌 *${args}*\n\n🔍 Cari gambar di Pinterest:\nhttps://id.pinterest.com/search/pins/?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
   }
   if (cmd === 'cuaca') {
     const q = args || 'Jakarta';
