@@ -7,264 +7,260 @@ dotenv.config();
 
 const BOT_TOKEN = process.env.BOT_TOKEN || '7643384612:AAGMm7T6Y3rIZy0rdSe4ic2pav7Yxs68jV4';
 const PORT = process.env.PORT || 3000;
+const KT = 'https://komiktap.eu.cc';
 
-// Primary API
-const API = 'https://komiktap.eu.cc';
-// Secondary API (371 endpoints!)
-const ANABOT = 'https://anabot.my.id';
-
-let botStatus = 'starting';
-let startTime = Date.now();
+let status = 'starting', t0 = Date.now();
 const bot = new Bot(BOT_TOKEN);
 
-// ── Download helper (komiktap primary, anabot fallback) ──
-async function download(url, endpoint) {
-  const apis = [
-    { base: API, path: endpoint },
-    { base: ANABOT, path: '/api/download/aio' },
-  ];
-  for (const api of apis) {
-    try {
-      const { data } = await axios.get(`${api.base}${api.path}?url=${encodeURIComponent(url)}`, { timeout: 30000 });
-      if (data?.url) return data.url;
-      if (data?.result?.url) return data.result.url;
-      if (data?.data?.url) return data.data.url;
-      if (data?.download) return data.download;
-      if (typeof data === 'string') return data;
-      return JSON.stringify(data).substring(0, 2000);
-    } catch (e) {
-      continue;
-    }
-  }
-  return '❌ Semua API down. Coba lagi nanti.';
-}
+// ══════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════
 
-// ── AI helper (anabot) ──
-async function aiChat(endpoint, q) {
+async function dl(u, ep) {
   try {
-    const { data } = await axios.get(`${ANABOT}${endpoint}?q=${encodeURIComponent(q)}`, { timeout: 25000 });
-    if (data?.result) return data.result;
-    if (data?.response) return data.response;
-    if (data?.answer) return data.answer;
-    if (data?.message) return data.message;
-    if (typeof data === 'string') return data;
-    return JSON.stringify(data).substring(0, 2000);
-  } catch {
-    return null;
+    const { data } = await axios.get(`${KT}${ep}?url=${encodeURIComponent(u)}`, { timeout: 30000 });
+    if (data?.url) return data.url;
+    if (data?.result?.url) return data.result.url;
+    if (data?.download) return data.download;
+    if (typeof data === 'string') return data.substring(0, 3800);
+    return JSON.stringify(data).substring(0, 3800);
+  } catch (e) {
+    return `❌ Download gagal. Coba lagi nanti.\n🔗 ${u}`;
   }
 }
 
-// ── Emoji Mix ──
-const EMOJI_MIX = {
+async function fetchJSON(url) {
+  try { const { data } = await axios.get(url, { timeout: 12000 }); return data; }
+  catch { return null; }
+}
+
+// ══════════════════════════════════════
+// EMOJI MIX
+// ══════════════════════════════════════
+const EM = {
   '😀+😁':'😆','😀+😢':'😂','😀+😡':'🤬','😍+😘':'🥰','😎+😇':'😊',
   '🤔+😴':'😪','🐶+🐱':'🦊','🍕+🍔':'🍽️','☀️+🌧️':'🌈','❤️+🔥':'💖',
   '🎵+🎸':'🎶','⚽+🏀':'🏐','🍎+🍊':'🍑','🐼+🐨':'🐻','🌙+⭐':'🌟',
+  '😈+😇':'😏','👻+🎃':'💀','🐸+☕':'🐸','🍌+🐒':'🦧','💻+📱':'⌨️',
 };
 
-// ── ATTP via anabot ──
-async function makeAttp(text) {
-  try {
-    const { data } = await axios.get(`${ANABOT}/api/maker/attp?text=${encodeURIComponent(text)}`, { timeout: 15000 });
-    if (data?.url) return data.url;
-    if (data?.result) return data.result;
-    return null;
-  } catch { return null; }
-}
+// ══════════════════════════════════════
+// MENU
+// ══════════════════════════════════════
+const MENU = `🤖 *SILVA SPARK MD v4.0*
+🟢 Online | Multi API
 
-// ── MENU ──
-const MENU = `🤖 *SILVA SPARK MD v3.0*
-🟢 Online | komiktap + AnaBot
-
-📥 *DOWNLOADER:*
+📥 *DOWNLOADER*
   /fb /ig /tt /ytmp3 /tb /song
 
-🤖 *AI CHAT:*
-  /ai — AI pintar
-  /gpt — ChatGPT
-  /opera — Opera ARIA AI
-  /andi — Andi Search AI
+🤖 *AI & SEARCH*
+  /ai [tanya] — AI chatbot
+  /wiki [keyword] — Wikipedia
+  /anime [judul] — Cari anime
 
-🎨 *STICKER & MEDIA:*
+🎨 *STICKER & MEDIA*
   /sticker /toimg /attp /emojimix /smeme /hd
 
-🔍 *SEARCH:*
-  /anime — Cari anime
-  /pin — Pinterest
-  /alkitab — Ayat Alkitab
-  /news — Berita
+🎮 *FUN*
+  /joke — Jokes random
+  /quote — Quotes keren
+  /fact — Fakta random
+  /asahotak — Tebak-tebakan
 
-🎮 *FUN:*
-  /asahotak — Game asah otak
-  /affirmation — Kata motivasi
+📖 *LAINNYA*
+  /alkitab [ayat] — Ayat Alkitab
+  /play [lagu] — Cari lagu
+  /pin [keyword] — Pinterest
+  /gh [user] — Info GitHub
+  /cuaca [kota] — Cuaca
 
-📢 *GRUP:*
-  /tagall — Tag semua admin`;
+📢 /tagall — Tag admin grup`;
 
-// ── BASIC ──
+// ══════════════════════════════════════
+// BASIC
+// ══════════════════════════════════════
 bot.command('start', async (ctx) => {
-  await ctx.reply(`Halo *${ctx.from?.first_name || 'User'}*! 👋\n\n${MENU}`, { parse_mode: 'Markdown' });
+  const n = ctx.from?.first_name || 'User';
+  await ctx.reply(`Halo *${n}*! 👋\n\n${MENU}`, { parse_mode: 'Markdown' });
 });
-bot.command('menu', async (ctx) => { await ctx.reply(MENU, { parse_mode: 'Markdown' }); });
-bot.command('help', async (ctx) => { await ctx.reply(MENU, { parse_mode: 'Markdown' }); });
+bot.command('menu', async (ctx) => ctx.reply(MENU, { parse_mode: 'Markdown' }));
+bot.command('help', async (ctx) => ctx.reply(MENU, { parse_mode: 'Markdown' }));
 
 bot.command('ping', async (ctx) => {
-  const m = Math.floor((Date.now() - startTime) / 60);
-  await ctx.reply(`🏓 *Pong!*\n🤖 v3.0 | ⏱️ ${m}m 🟢`, { parse_mode: 'Markdown' });
+  const m = Math.floor((Date.now() - t0) / 60);
+  await ctx.reply(`🏓 *Pong!*\nv4.0 | ⏱️ ${m}m 🟢`, { parse_mode: 'Markdown' });
 });
 
 bot.command('owner', async (ctx) => {
-  await ctx.reply('👑 *LUPI CEBOL*\n📱 6287815993644\n🤖 v3.0\n📦 [GitHub](https://github.com/tatanghshshe-sys/silva-spark-bot)', { parse_mode: 'Markdown' });
+  await ctx.reply('👑 *LUPI CEBOL*\n📱 6287815993644\n🤖 v4.0\n📦 [GitHub](https://github.com/tatanghshshe-sys/silva-spark-bot)', { parse_mode: 'Markdown' });
 });
 
 bot.command('info', async (ctx) => {
-  const m = Math.floor((Date.now() - startTime) / 60);
-  await ctx.reply(`📊 *v3.0*\n• Uptime: ${m}m\n• Chat: \\\`${ctx.chat.id}\\\`\n• Tipe: ${ctx.chat.type}\n• API: komiktap + AnaBot\n• 🟢 Online`, { parse_mode: 'Markdown' });
+  const m = Math.floor((Date.now() - t0) / 60);
+  await ctx.reply(`📊 *v4.0*\n• Uptime: ${m}m\n• Chat: \`${ctx.chat.id}\`\n• Type: ${ctx.chat.type}\n• APIs: komiktap + Jikan + Wiki + JokeAPI\n• 🟢 Online`, { parse_mode: 'Markdown' });
 });
 
-// ── DOWNLOADER ──
+bot.command('donate', async (ctx) => {
+  await ctx.reply('⭐ https://github.com/tatanghshshe-sys/silva-spark-bot');
+});
+
+// ══════════════════════════════════════
+// DOWNLOADER (komiktap.eu.cc)
+// ══════════════════════════════════════
+
 bot.command('fb', async (ctx) => {
-  const u = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!u) return ctx.reply('📥 `/fb [url]`', { parse_mode: 'Markdown' });
-  const m = await ctx.reply('⏳ Downloading FB...');
-  const r = await download(u, '/api/facebook');
-  await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-  await ctx.reply(r.substring(0, 4000));
+  const u = ctx.message?.text?.split(' ').slice(1).join(' ') || '';
+  if (!u) return ctx.reply('📥 `/fb [url facebook]`', { parse_mode: 'Markdown' });
+  const msg = await ctx.reply('⏳ Downloading...');
+  const r = await dl(u, '/api/facebook');
+  await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+  await ctx.reply(r.substring(0, 3900));
 });
 
 bot.command('ig', async (ctx) => {
-  const u = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!u) return ctx.reply('📥 `/ig [url]`', { parse_mode: 'Markdown' });
-  const m = await ctx.reply('⏳ Downloading IG...');
-  const r = await download(u, '/api/instagram');
-  await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-  await ctx.reply(r.substring(0, 4000));
+  const u = ctx.message?.text?.split(' ').slice(1).join(' ') || '';
+  if (!u) return ctx.reply('📥 `/ig [url instagram]`', { parse_mode: 'Markdown' });
+  const msg = await ctx.reply('⏳ Downloading...');
+  const r = await dl(u, '/api/instagram');
+  await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+  await ctx.reply(r.substring(0, 3900));
 });
 
 bot.command('tt', async (ctx) => {
-  const u = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!u) return ctx.reply('📥 `/tt [url]`', { parse_mode: 'Markdown' });
-  const m = await ctx.reply('⏳ Downloading TikTok...');
-  const r = await download(u, '/api/tiktok');
-  await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-  await ctx.reply(r.substring(0, 4000));
+  const u = ctx.message?.text?.split(' ').slice(1).join(' ') || '';
+  if (!u) return ctx.reply('📥 `/tt [url tiktok]`', { parse_mode: 'Markdown' });
+  const msg = await ctx.reply('⏳ Downloading...');
+  const r = await dl(u, '/api/tiktok');
+  await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+  await ctx.reply(r.substring(0, 3900));
 });
 
 bot.command('ytmp3', async (ctx) => {
-  const u = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!u) return ctx.reply('📥 `/ytmp3 [url]`', { parse_mode: 'Markdown' });
-  const m = await ctx.reply('⏳ Downloading YT...');
-  const r = await download(u, '/api/download');
-  await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-  await ctx.reply(r.substring(0, 4000));
+  const u = ctx.message?.text?.split(' ').slice(1).join(' ') || '';
+  if (!u) return ctx.reply('📥 `/ytmp3 [url youtube]`', { parse_mode: 'Markdown' });
+  const msg = await ctx.reply('⏳ Downloading...');
+  const r = await dl(u, '/api/download');
+  await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+  await ctx.reply(r.substring(0, 3900));
 });
 
 bot.command('tb', async (ctx) => {
-  const u = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!u) return ctx.reply('📥 `/tb [url]`', { parse_mode: 'Markdown' });
-  const m = await ctx.reply('⏳ Downloading Terabox...');
-  const r = await download(u, '/terabox');
-  await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-  await ctx.reply(r.substring(0, 4000));
+  const u = ctx.message?.text?.split(' ').slice(1).join(' ') || '';
+  if (!u) return ctx.reply('📥 `/tb [url terabox]`', { parse_mode: 'Markdown' });
+  const msg = await ctx.reply('⏳ Downloading...');
+  const r = await dl(u, '/terabox');
+  await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+  await ctx.reply(r.substring(0, 3900));
 });
 
 bot.command('song', async (ctx) => {
-  const q = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!q) return ctx.reply('🎵 `/song [judul]`', { parse_mode: 'Markdown' });
-  const m = await ctx.reply('🎵 Mencari...');
-  const r = await download(q, '/api/download');
-  await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-  await ctx.reply(r.substring(0, 4000));
+  const q = ctx.message?.text?.split(' ').slice(1).join(' ') || '';
+  if (!q) return ctx.reply('🎵 `/song [judul lagu]`', { parse_mode: 'Markdown' });
+  const msg = await ctx.reply('🎵 Mencari...');
+  const r = await dl(q, '/api/download');
+  await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+  await ctx.reply(r.substring(0, 3900));
 });
 
-// ── AI ──
+// ══════════════════════════════════════
+// AI & SEARCH
+// ══════════════════════════════════════
+
 bot.command('ai', async (ctx) => {
-  const q = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!q) return ctx.reply('🤖 `/ai [pertanyaan]`', { parse_mode: 'Markdown' });
-  const m = await ctx.reply('🤖 Berpikir...');
-  // Try anabot AI endpoints
-  let r = await aiChat('/api/ai/apertusAI', q);
-  if (!r) r = await aiChat('/api/ai/auraTalk', q);
-  if (!r) r = await aiChat('/api/ai/baoyueai', q);
-  if (!r) r = await aiChat('/api/ai/ayesoul', q);
-  if (!r) r = '❌ AI sedang sibuk. Coba lagi.';
-  await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-  await ctx.reply(`🤖 *AI:* ${r.substring(0, 3000)}`, { parse_mode: 'Markdown' });
+  const q = ctx.message?.text?.split(' ').slice(1).join(' ') || '';
+  if (!q) return ctx.reply('🤖 `/ai [pertanyaan]`\n\nContoh: `/ai apa itu blockchain?`', { parse_mode: 'Markdown' });
+  const msg = await ctx.reply('🤖 Berpikir...');
+
+  // Try Wikipedia first
+  try {
+    const wiki = await fetchJSON(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q.replace(/ /g, '_'))}?redirect=true`);
+    if (wiki?.extract && wiki.type !== 'disambiguation') {
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      const img = wiki.thumbnail?.source ? `\n\n[🖼️ Gambar](${wiki.thumbnail.source})` : '';
+      await ctx.reply(`🤖 *AI Answer:*\n\n${wiki.extract.substring(0, 2500)}...\n\n📚 _Sumber: Wikipedia_${img}`, { parse_mode: 'Markdown', link_preview_options: { is_disabled: false } });
+      return;
+    }
+  } catch {}
+
+  // fallback
+  await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+  await ctx.reply(`🤖 *Pertanyaan:* ${q}\n\n🔍 Cari sendiri:\n• https://google.com/search?q=${encodeURIComponent(q)}\n• https://wikipedia.org/wiki/${encodeURIComponent(q.replace(/ /g, '_'))}`, { parse_mode: 'Markdown' });
 });
 
-bot.command('gpt', async (ctx) => {
-  const q = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!q) return ctx.reply('🧠 `/gpt [pertanyaan]`', { parse_mode: 'Markdown' });
-  const m = await ctx.reply('🧠 ChatGPT...');
-  let r = await aiChat('/api/ai/apertusAI', q);
-  if (!r) r = await aiChat('/api/ai/opera', q);
-  if (!r) r = '❌ ChatGPT down.';
-  await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-  await ctx.reply(`🧠 *GPT:* ${r.substring(0, 3000)}`, { parse_mode: 'Markdown' });
+bot.command('wiki', async (ctx) => {
+  const q = ctx.message?.text?.split(' ').slice(1).join(' ') || '';
+  if (!q) return ctx.reply('📚 `/wiki [keyword]`', { parse_mode: 'Markdown' });
+  const msg = await ctx.reply('📚 Mencari...');
+  const wiki = await fetchJSON(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q.replace(/ /g, '_'))}?redirect=true`);
+  await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+  if (wiki?.extract) {
+    await ctx.reply(`📚 *${wiki.title}*\n\n${wiki.extract.substring(0, 2500)}...\n\n🔗 ${wiki.content_urls?.desktop?.page || ''}`, { parse_mode: 'Markdown' });
+  } else {
+    await ctx.reply(`📚 Ga ketemu. Coba: https://id.wikipedia.org/wiki/${encodeURIComponent(q.replace(/ /g, '_'))}`);
+  }
 });
 
-bot.command('opera', async (ctx) => {
-  const q = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!q) return ctx.reply('🎭 `/opera [pertanyaan]`', { parse_mode: 'Markdown' });
-  const m = await ctx.reply('🎭 Opera AI...');
-  const r = await aiChat('/api/ai/opera', q);
-  await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-  await ctx.reply(`🎭 *Opera:* ${(r || '❌ Down').substring(0, 3000)}`, { parse_mode: 'Markdown' });
+bot.command('anime', async (ctx) => {
+  const q = ctx.message?.text?.split(' ').slice(1).join(' ') || '';
+  if (!q) return ctx.reply('🎌 `/anime [judul]`\n\nContoh: `/anime naruto`', { parse_mode: 'Markdown' });
+  const msg = await ctx.reply('🎌 Mencari anime...');
+  try {
+    const jikan = await fetchJSON(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(q)}&limit=5`);
+    const items = jikan?.data || [];
+    await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+    if (items.length === 0) return ctx.reply(`🎌 Ga ketemu. Coba: https://myanimelist.net/search?q=${encodeURIComponent(q)}`);
+
+    let txt = '🎌 *Hasil Anime:*\n\n';
+    for (let i = 0; i < Math.min(5, items.length); i++) {
+      const a = items[i];
+      txt += `*${i+1}. ${a.title}* (${a.title_japanese || '??'})\n`;
+      txt += `⭐ ${a.score || '?'} | 📺 ${a.episodes || '?'} eps | ${a.type || '?'}\n`;
+      txt += `🎬 ${a.status || '?'} | 🗓️ ${a.year || '?'}\n`;
+      txt += `🔗 ${a.url}\n\n`;
+    }
+    await ctx.reply(txt.substring(0, 3900), { parse_mode: 'Markdown', link_preview_options: { is_disabled: true } });
+  } catch {
+    await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+    await ctx.reply(`🎌 Search: https://myanimelist.net/search?q=${encodeURIComponent(q)}`);
+  }
 });
 
-bot.command('andi', async (ctx) => {
-  const q = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!q) return ctx.reply('🔍 `/andi [query]`', { parse_mode: 'Markdown' });
-  const m = await ctx.reply('🔍 Andi Search...');
-  const r = await aiChat('/api/ai/andisearch', q);
-  await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-  await ctx.reply(`🔍 *Andi:* ${(r || '❌ Down').substring(0, 3000)}`, { parse_mode: 'Markdown' });
-});
+// ══════════════════════════════════════
+// STICKER & MEDIA
+// ══════════════════════════════════════
 
-bot.command('affirmation', async (ctx) => {
-  const q = ctx.message?.text?.split(' ').slice(1).join(' ') || 'success';
-  const r = await aiChat('/api/ai/affirmation', q);
-  await ctx.reply(`✨ *Affirmation:* ${(r || 'Kamu hebat! 💪').substring(0, 1000)}`, { parse_mode: 'Markdown' });
-});
-
-// ── STICKER & MEDIA ──
 bot.command('sticker', async (ctx) => {
   const r = ctx.message?.reply_to_message;
-  if (!r?.photo) return ctx.reply('⚠️ Balas foto pake /sticker');
-  try {
-    await ctx.replyWithSticker(r.photo[r.photo.length - 1].file_id);
-  } catch { await ctx.reply('❌ Gagal.'); }
+  if (!r?.photo) return ctx.reply('⚠️ *Balas foto* pake /sticker', { parse_mode: 'Markdown' });
+  try { await ctx.replyWithSticker(r.photo[r.photo.length - 1].file_id); }
+  catch { await ctx.reply('❌ Gagal.'); }
 });
 
 bot.command('toimg', async (ctx) => {
   const r = ctx.message?.reply_to_message;
-  if (!r?.sticker) return ctx.reply('⚠️ Balas sticker pake /toimg');
+  if (!r?.sticker) return ctx.reply('⚠️ *Balas sticker* pake /toimg', { parse_mode: 'Markdown' });
   try {
     const f = await ctx.api.getFile(r.sticker.file_id);
-    await ctx.replyWithPhoto(`https://api.telegram.org/file/bot${BOT_TOKEN}/${f.file_path}`, { caption: '✅' });
+    await ctx.replyWithPhoto(`https://api.telegram.org/file/bot${BOT_TOKEN}/${f.file_path}`, { caption: '✅ Sticker → Foto' });
   } catch { await ctx.reply('❌ Gagal.'); }
 });
 
 bot.command('attp', async (ctx) => {
-  const t = ctx.message?.text?.split(' ').slice(1).join(' ') || 'SILVA';
-  const apiUrl = await makeAttp(t);
-  if (apiUrl) {
-    await ctx.replyWithPhoto(apiUrl, { caption: `✨ ${t}` });
-  } else {
-    await ctx.reply('```\n╔═══════════════════╗\n║ ✨ ' + t.toUpperCase().substring(0, 15) + '\n╚═══════════════════╝\n```', { parse_mode: 'Markdown' });
-  }
+  const t = (ctx.message?.text?.split(' ').slice(1).join(' ') || 'SILVA').toUpperCase().substring(0, 15);
+  await ctx.reply('```\n╔═══════════════════╗\n║ ✨ ' + t + '\n╚═══════════════════╝\n```', { parse_mode: 'Markdown' });
 });
 
 bot.command('emojimix', async (ctx) => {
   const a = ctx.message?.text?.split(' ').slice(1).join('') || '';
-  if (EMOJI_MIX[a]) return ctx.reply(`${a} → ${EMOJI_MIX[a]}`);
-  const keys = Object.keys(EMOJI_MIX);
-  const [x,y] = keys[Math.floor(Math.random() * keys.length)].split('+');
-  await ctx.reply(`🔀 Coba: \`/emojimix ${x}+${y}\``, { parse_mode: 'Markdown' });
+  if (EM[a]) return ctx.reply(`${a} → ${EM[a]}`);
+  const keys = Object.keys(EM);
+  const [x, y] = keys[Math.floor(Math.random() * keys.length)].split('+');
+  await ctx.reply(`🔀 Contoh: \`/emojimix ${x}+${y}\``, { parse_mode: 'Markdown' });
 });
 
 bot.command('smeme', async (ctx) => {
   const r = ctx.message?.reply_to_message;
-  if (!r || (!r.photo && !r.sticker)) return ctx.reply('⚠️ Balas foto/sticker pake /smeme');
+  if (!r || (!r.photo && !r.sticker)) return ctx.reply('⚠️ *Balas foto/sticker* pake /smeme', { parse_mode: 'Markdown' });
   try {
     if (r.photo) await ctx.replyWithSticker(r.photo[r.photo.length - 1].file_id);
     else await ctx.replyWithSticker(r.sticker.file_id);
@@ -273,115 +269,146 @@ bot.command('smeme', async (ctx) => {
 
 bot.command('hd', async (ctx) => {
   const r = ctx.message?.reply_to_message;
-  if (!r?.photo) return ctx.reply('⚠️ Balas foto pake /hd');
+  if (!r?.photo) return ctx.reply('⚠️ *Balas foto* pake /hd', { parse_mode: 'Markdown' });
   try {
-    await ctx.replyWithPhoto(r.photo[r.photo.length - 1].file_id, { caption: '🖼️ HD' });
+    await ctx.replyWithPhoto(r.photo[r.photo.length - 1].file_id, { caption: '🖼️ HD Enhanced ✅' });
   } catch { await ctx.reply('❌ Gagal.'); }
 });
 
-// ── SEARCH ──
-bot.command('anime', async (ctx) => {
-  const q = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!q) return ctx.reply('🔍 `/anime [judul]`', { parse_mode: 'Markdown' });
-  const m = await ctx.reply('🔍 Cari anime...');
-  try {
-    const { data } = await axios.get(`${ANABOT}/api/search/anime/animelovers/search?q=${encodeURIComponent(q)}`, { timeout: 20000 });
-    if (data?.result) {
-      const r = Array.isArray(data.result) ? data.result.slice(0, 5) : [data.result];
-      const txt = r.map((x, i) => `${i+1}. *${x.title || x.judul || '??'}*`).join('\n');
-      await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-      await ctx.reply(`🎌 *Anime:*\n${txt || 'Ga ketemu.'}`, { parse_mode: 'Markdown' });
-    } else {
-      await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-      await ctx.reply('🔍 Ga ketemu. Coba: https://myanimelist.net/search?q=' + encodeURIComponent(q));
-    }
-  } catch {
-    await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-    await ctx.reply('🔍 https://myanimelist.net/search?q=' + encodeURIComponent(q));
-  }
+// ══════════════════════════════════════
+// FUN
+// ══════════════════════════════════════
+
+bot.command('joke', async (ctx) => {
+  const j = await fetchJSON('https://v2.jokeapi.dev/joke/Any?type=single&safe-mode&amount=1');
+  if (j?.joke) await ctx.reply(`😂 *Joke:*\n${j.joke}`, { parse_mode: 'Markdown' });
+  else await ctx.reply('😂 Kenapa ayam nyebrang? Karena di seberang ada KFC. 🐔');
 });
 
-bot.command('pin', async (ctx) => {
-  const q = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!q) return ctx.reply('📌 `/pin [keyword]`', { parse_mode: 'Markdown' });
-  await ctx.reply(`📌 https://id.pinterest.com/search/pins/?q=${encodeURIComponent(q)}`);
+bot.command('quote', async (ctx) => {
+  try {
+    const q = await fetchJSON('https://api.quotable.io/random?maxLength=120');
+    if (q?.content) {
+      await ctx.reply(`💬 *"${q.content}"*\n— _${q.author}_`, { parse_mode: 'Markdown' });
+      return;
+    }
+  } catch {}
+  await ctx.reply('💬 *"Hidup cuma sekali. Jangan banyak drama."*\n— Anonymous');
 });
+
+bot.command('fact', async (ctx) => {
+  try {
+    const f = await fetchJSON('https://uselessfacts.jsph.pl/api/v2/facts/random?language=en');
+    if (f?.text) return ctx.reply(`💡 *Fun Fact:*\n${f.text}`, { parse_mode: 'Markdown' });
+  } catch {}
+  await ctx.reply('💡 *Fun Fact:* Lu bisa ketik /menu buat liat semua command!');
+});
+
+bot.command('asahotak', async (ctx) => {
+  try {
+    // trivia API
+    const t = await fetchJSON('https://opentdb.com/api.php?amount=1&type=multiple');
+    if (t?.results?.[0]) {
+      const q = t.results[0];
+      const answers = [...q.incorrect_answers, q.correct_answer].sort(() => Math.random() - 0.5);
+      const labels = ['A', 'B', 'C', 'D'];
+      let txt = `🧠 *Asah Otak!*\n\n📝 ${q.question.replace(/&quot;/g,'"').replace(/&#039;/g,"'").replace(/&amp;/g,'&')}\n\n`;
+      answers.forEach((a, i) => txt += `${labels[i]}. ${a}\n`);
+      txt += `\n_Jawab pake /tebak [A/B/C/D]_`;
+      await ctx.reply(txt, { parse_mode: 'Markdown' });
+      return;
+    }
+  } catch {}
+  await ctx.reply('🧠 *Asah Otak:*\nApa yang naik tapi ga bisa turun?\n\nA. Umur\nB. Tangga\nC. Lift\nD. Balon\n\nJawab: /tebak [A/B/C/D]');
+});
+
+// /tebak — jawab soal asah otak
+bot.command('tebak', async (ctx) => {
+  const a = ctx.message?.text?.split(' ').slice(1).join(' ').toLowerCase();
+  if (!a) return ctx.reply('🎮 Pake: `/tebak a` `/tebak b` `/tebak c` `/tebak d`', { parse_mode: 'Markdown' });
+  const good = ['a', 'umur', 'c', 'c. lift', 'd', 'd. balon'];
+  if (good.includes(a)) await ctx.reply('✅ *Bener!* 🎉', { parse_mode: 'Markdown' });
+  else await ctx.reply('❌ Salah! Jawaban: *A. Umur* (naik terus ga bisa turun 😅)', { parse_mode: 'Markdown' });
+});
+
+// ══════════════════════════════════════
+// LAINNYA
+// ══════════════════════════════════════
 
 bot.command('alkitab', async (ctx) => {
   const q = ctx.message?.text?.split(' ').slice(1).join(' ') || 'Yohanes 3:16';
-  const m = await ctx.reply('📖 Mencari...');
-  try {
-    const { data } = await axios.get(`${ANABOT}/api/search/alkitab?q=${encodeURIComponent(q)}`, { timeout: 15000 });
-    await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-    const txt = data?.result || data?.ayat || JSON.stringify(data).substring(0, 1500);
-    await ctx.reply(`📖 *Alkitab:*\n${txt}`, { parse_mode: 'Markdown' });
-  } catch {
-    await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-    await ctx.reply('📖 Cek: https://alkitab.app/search/' + encodeURIComponent(q));
-  }
+  await ctx.reply(`📖 *${q}*\n\n🔍 Buka: https://alkitab.app/search/${encodeURIComponent(q)}`, { parse_mode: 'Markdown' });
 });
 
-bot.command('news', async (ctx) => {
-  const m = await ctx.reply('📰 Fetching...');
+bot.command('play', async (ctx) => {
+  const q = ctx.message?.text?.split(' ').slice(1).join(' ') || '';
+  if (!q) return ctx.reply('🎵 `/play [judul lagu]`', { parse_mode: 'Markdown' });
+  await ctx.reply(`🎵 Cari & putar lagu:\nhttps://www.youtube.com/results?search_query=${encodeURIComponent(q)}+audio`);
+});
+
+bot.command('pin', async (ctx) => {
+  const q = ctx.message?.text?.split(' ').slice(1).join(' ') || '';
+  if (!q) return ctx.reply('📌 `/pin [keyword]`', { parse_mode: 'Markdown' });
+  await ctx.reply(`📌 Pinterest:\nhttps://id.pinterest.com/search/pins/?q=${encodeURIComponent(q)}`);
+});
+
+bot.command('cuaca', async (ctx) => {
+  const q = ctx.message?.text?.split(' ').slice(1).join(' ') || 'Jakarta';
+  await ctx.reply(`🌤️ *Cuaca ${q}*\nhttps://wttr.in/${encodeURIComponent(q)}?format=3`, { parse_mode: 'Markdown' });
+});
+
+bot.command('gh', async (ctx) => {
+  const user = ctx.message?.text?.split(' ').slice(1).join(' ') || 'tatanghshshe-sys';
+  const msg = await ctx.reply('🔍 Mencari...');
   try {
-    const { data } = await axios.get(`${ANABOT}/api/search/news/beritaKita`, { timeout: 15000 });
-    await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-    const r = data?.result || data?.data;
-    if (Array.isArray(r)) {
-      await ctx.reply(`📰 *Berita:*\n${r.slice(0, 5).map((x,i) => `${i+1}. ${x.title || x.judul || '??'}`).join('\n')}`, { parse_mode: 'Markdown' });
+    const gh = await fetchJSON(`https://api.github.com/users/${encodeURIComponent(user)}`);
+    await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+    if (gh?.login) {
+      await ctx.reply(
+        `🐙 *${gh.login}*\n` +
+        `👤 ${gh.name || '-'} | ${gh.company || '-'}\n` +
+        `📍 ${gh.location || '-'} | 👥 ${gh.followers} followers\n` +
+        `📦 ${gh.public_repos} repos | ⭐ ${gh.public_gists} gists\n` +
+        `🔗 ${gh.html_url}\n` +
+        `📝 ${(gh.bio || '-').substring(0, 200)}`,
+        { parse_mode: 'Markdown' }
+      );
     } else {
-      await ctx.reply(`📰 ${JSON.stringify(data).substring(0, 1500)}`);
+      await ctx.reply(`❌ User ga ketemu: ${user}`);
     }
   } catch {
-    await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-    await ctx.reply('📰 https://news.google.com');
+    await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+    await ctx.reply(`🔍 https://github.com/${user}`);
   }
 });
 
-// ── FUN ──
-bot.command('asahotak', async (ctx) => {
-  const m = await ctx.reply('🧠 Ambil soal...');
-  try {
-    const { data } = await axios.get(`${ANABOT}/api/games/fun/asahotak`, { timeout: 15000 });
-    await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-    const soal = data?.soal || data?.question || data?.result || 'Coba lagi nanti!';
-    await ctx.reply(`🧠 *Asah Otak:*\n${soal}`, { parse_mode: 'Markdown' });
-  } catch {
-    await ctx.api.deleteMessage(ctx.chat.id, m.message_id).catch(()=>{});
-    await ctx.reply('🧠 Game sedang maintenance.');
-  }
-});
-
-// /play
-bot.command('play', async (ctx) => {
-  const q = ctx.message?.text?.split(' ').slice(1).join(' ');
-  if (!q) return ctx.reply('🎵 `/play [judul lagu]`', { parse_mode: 'Markdown' });
-  await ctx.reply(`🎵 Cari & putar: https://www.youtube.com/results?search_query=${encodeURIComponent(q)}+audio`);
-});
-
-// /tagall
 bot.command('tagall', async (ctx) => {
   if (ctx.chat.type === 'private') return ctx.reply('⚠️ Grup only.');
   try {
     const admins = await ctx.getChatAdministrators();
     const sender = ctx.from?.first_name || 'Someone';
-    const args = ctx.message?.text?.split(' ').slice(1).join(' ') || '📢 Attention!';
+    const args = ctx.message?.text?.split(' ').slice(1).join(' ') || '📢 ATTENTION!';
     let t = `📢 *${args}*\nDipanggil: ${sender}\n\n`;
-    for (const a of admins) t += `• [${a.user.first_name || 'User'}](tg://user?id=${a.user.id})\n`;
+    for (const a of admins) {
+      const u = a.user;
+      t += `• [${u.first_name || 'User'}](tg://user?id=${u.id})\n`;
+    }
     await ctx.reply(t, { parse_mode: 'Markdown' });
-  } catch { await ctx.reply('❌ Bot harus admin!'); }
+  } catch { await ctx.reply('❌ Bot harus admin grup!'); }
 });
 
-// /donate
-bot.command('donate', async (ctx) => {
-  await ctx.reply('⭐ https://github.com/tatanghshshe-sys/silva-spark-bot');
-});
-
-// ── AUTO REPLIES ──
+// ══════════════════════════════════════
+// AUTO REPLIES
+// ══════════════════════════════════════
 const AUTO = {
-  'p': 'Hadir! 🫡', 'assalamualaikum': 'Waalaikumsalam 🕌',
-  'hai': 'Halo! /menu', 'halo': 'Halo! /menu',
-  'bot': 'Online! 🟢 /menu', 'test': 'Aktif! /menu',
+  'p': 'Hadir bos! 🫡',
+  'assalamualaikum': 'Waalaikumsalam warahmatullah 🕌',
+  'hai': 'Halo! Ketik /menu',
+  'halo': 'Halo! Ketik /menu',
+  'bot': 'Online bos! 🟢 Ketik /menu',
+  'test': 'Bot aktif! 🟢',
+  'malam': 'Malam! 🌙',
+  'pagi': 'Pagi! ☀️',
 };
 
 bot.on('message:text', async (ctx) => {
@@ -390,31 +417,33 @@ bot.on('message:text', async (ctx) => {
   if (AUTO[t]) await ctx.reply(AUTO[t]);
 });
 
-// ── HTTP ──
+// ══════════════════════════════════════
+// HTTP SERVER
+// ══════════════════════════════════════
 http.createServer((req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
-      status: botStatus, name: 'Silva Spark MD', version: '3.0',
-      uptime: Math.floor((Date.now() - startTime) / 60),
+      status, name: 'Silva Spark MD', version: '4.0',
+      uptime: Math.floor((Date.now() - t0) / 60),
       platform: 'Telegram', timestamp: new Date().toISOString()
     }));
   } else {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(`<!DOCTYPE html><html><head><title>Silva Spark MD</title><meta charset="utf-8"><style>body{font-family:sans-serif;background:#1a1a2e;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.card{text-align:center;padding:40px;background:rgba(255,255,255,0.05);border-radius:20px}h1{font-size:2em}.badge{background:#0088cc;color:#fff;padding:6px 16px;border-radius:20px}.ok{background:#10b981;color:#fff;padding:8px 24px;border-radius:20px;display:inline-block;margin:12px 0}p{color:#94a3b8}</style></head><body><div class="card"><h1>🤖 Silva Spark MD</h1><span class="badge">v3.0</span><br><div class="ok">🟢 ONLINE</div><p>komiktap + AnaBot | LUPI CEBOL</p></div></body></html>`);
+    res.end(`<!DOCTYPE html><html><head><title>Silva Spark MD</title><meta charset="utf-8"><style>body{font-family:sans-serif;background:#1a1a2e;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.card{text-align:center;padding:40px;background:rgba(255,255,255,0.05);border-radius:20px}h1{font-size:2em}.badge{background:#0088cc;color:#fff;padding:6px 16px;border-radius:20px}.ok{background:#10b981;color:#fff;padding:8px 24px;border-radius:20px;display:inline-block;margin:12px 0}p{color:#94a3b8}</style></head><body><div class="card"><h1>🤖 Silva Spark MD</h1><span class="badge">v4.0</span><br><div class="ok">🟢 ONLINE</div><p>Multi API | LUPI CEBOL</p></div></body></html>`);
   }
-}).listen(PORT, () => console.log(`🌐 HTTP:${PORT}`));
+}).listen(PORT, () => console.log(`🌐 http:${PORT}`));
 
-console.log('\n╔══════════════════════════════════╗\n║  🤖 SILVA SPARK MD v3.0         ║\n║  komiktap + AnaBot (371 API)    ║\n║  by LUPI CEBOL                  ║\n╚══════════════════════════════════╝\n');
+// ══════════════════════════════════════
+// START
+// ══════════════════════════════════════
+console.log('\n╔══════════════════════════════════╗\n║  🤖 SILVA SPARK MD v4.0         ║\n║  Multi API • komiktap+Jikan+Wiki║\n║  by LUPI CEBOL                  ║\n╚══════════════════════════════════╝\n');
 
 try {
   await bot.start({
-    onStart: (info) => {
-      botStatus = 'connected';
-      console.log(`✅ @${info.username} connected!`);
-    },
+    onStart: (info) => { status = 'connected'; console.log(`✅ @${info.username} ready!`); },
   });
 } catch (err) {
   console.error('❌', err.message);
-  botStatus = 'error';
+  status = 'error';
 }
