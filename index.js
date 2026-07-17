@@ -1,7 +1,9 @@
 import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
-import { toDataURL } from 'qrcode-terminal';
+import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import dotenv from 'dotenv';
+
+const { toDataURL } = qrcode;
 
 dotenv.config();
 
