@@ -101,56 +101,58 @@ bot.on('message:text', async (ctx) => {
   const cmd = parts[0].toLowerCase();
   const args = parts.slice(1).join(' ');
 
-  // ── FACEBOOK (kirim video langsung) ──
+  // ── FACEBOOK (download buffer → kirim langsung) ──
   if (cmd === 'fb') {
     if (!args) return ctx.reply('📥 *fb [url facebook]*', { parse_mode: 'Markdown' });
     if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL Facebook yang valid!', { parse_mode: 'Markdown' });
     const msg = await ctx.reply('⏳ Downloading FB...');
     try {
       const { data } = await axios.get(`${KT}/api/facebook?url=${encodeURIComponent(args)}`, { timeout: 30000 });
+      const vurl = data?.download_quality_hd || data?.download_quality_sd;
+      if (vurl) {
+        try {
+          const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000 });
+          await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+          await ctx.replyWithVideo(Buffer.from(res.data), { caption: '📥 Facebook' });
+          return;
+        } catch {}
+      }
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      // Try sending video directly
-      if (data?.download_quality_hd) {
-        try { await ctx.replyWithVideo(data.download_quality_hd, { caption: '📥 Facebook HD' }); return; } catch {}
-      }
-      if (data?.download_quality_sd) {
-        try { await ctx.replyWithVideo(data.download_quality_sd, { caption: '📥 Facebook SD' }); return; } catch {}
-      }
-      // Fallback: show download links
       let r = '';
       if (data?.download_quality_hd) r += `📥 *HD:* [Klik Download](${data.download_quality_hd})\n`;
       if (data?.download_quality_sd) r += `📥 *SD:* [Klik Download](${data.download_quality_sd})\n`;
       if (data?.download_audio) r += `🎵 *Audio:* [Klik Download](${data.download_audio})\n`;
       if (r) return ctx.reply(r, { parse_mode: 'Markdown' });
-      if (data?.status === 'error') return ctx.reply(`❌ ${data.description || 'Gagal download FB.'}\n🔗 ${args}`);
-      return ctx.reply(`❌ Gagal.\n🔗 ${args}`);
+      return ctx.reply(`❌ ${data?.description || 'Gagal.'}\n🔗 ${args}`);
     } catch (e) {
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
       return ctx.reply(`❌ Error.\n🔗 ${args}`);
     }
   }
 
-  // ── INSTAGRAM (kirim video langsung) ──
+  // ── INSTAGRAM (download buffer → kirim langsung) ──
   if (cmd === 'ig') {
     if (!args) return ctx.reply('📥 *ig [url instagram]*', { parse_mode: 'Markdown' });
     if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL Instagram yang valid!', { parse_mode: 'Markdown' });
     const msg = await ctx.reply('⏳ Downloading IG...');
     try {
       const { data } = await axios.get(`${KT}/api/instagram?url=${encodeURIComponent(args)}`, { timeout: 30000 });
-      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      // Try sending video directly
       const vurl = data?.download_quality_hd || data?.download_quality_sd || data?.url || data?.download;
       if (vurl) {
-        try { await ctx.replyWithVideo(vurl, { caption: '📥 Instagram' }); return; } catch {}
+        try {
+          const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000 });
+          await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+          await ctx.replyWithVideo(Buffer.from(res.data), { caption: '📥 Instagram' });
+          return;
+        } catch {}
       }
-      // Fallback: show links
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
       let r = '';
       if (data?.download_quality_hd) r += `📥 *HD:* [Klik Download](${data.download_quality_hd})\n`;
       if (data?.download_quality_sd) r += `📥 *SD:* [Klik Download](${data.download_quality_sd})\n`;
       if (data?.url) r += `📥 [Download](${data.url})\n`;
       if (r) return ctx.reply(r, { parse_mode: 'Markdown' });
-      if (data?.error || data?.ok === false) return ctx.reply(`❌ ${data.error || 'Gagal download IG.'}\n🔗 ${args}`);
-      return ctx.reply(`❌ Gagal.\n🔗 ${args}`);
+      return ctx.reply(`❌ ${data?.error || 'Gagal.'}\n🔗 ${args}`);
     } catch (e) {
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
       return ctx.reply(`❌ Error.\n🔗 ${args}`);
