@@ -67,6 +67,7 @@ bot.on('message:text', async (ctx) => {
   // ── DOWNLOADER ──
   if (['fb','ig','tt','ytmp3','tb'].includes(cmd)) {
     if (!args) return ctx.reply(`📥 *${cmd} [url]*`, { parse_mode: 'Markdown' });
+    if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL yang valid!\nContoh: `' + cmd + ' https://...`', { parse_mode: 'Markdown' });
     const msg = await ctx.reply('⏳ Downloading...');
     const eps = { fb:'/api/facebook', ig:'/api/instagram', tt:'/api/tiktok', ytmp3:'/api/download', tb:'/terabox' };
     const r = await dl(args, eps[cmd]);
@@ -78,6 +79,7 @@ bot.on('message:text', async (ctx) => {
     const msg = await ctx.reply('🎵 Mencari...');
     const r = await dl(args, '/api/download');
     await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+    if (r.startsWith('❌')) return ctx.reply(`🎵 Ga ketemu. Cari manual:\nhttps://www.youtube.com/results?search_query=${encodeURIComponent(args)}`);
     return ctx.reply(r.substring(0, 3900));
   }
 
@@ -194,11 +196,11 @@ bot.on('message:text', async (ctx) => {
     } catch {}
     return ctx.reply('🧠 *Asah Otak:*\nApa yang naik tapi ga bisa turun?\nA. Umur  B. Tangga  C. Lift  D. Balon\n\nJawab: *tebak [A/B/C/D]*', { parse_mode: 'Markdown' });
   }
-  if (cmd === 'tebak') {
-    const a = args.toLowerCase();
+  if (cmd === 'tebak' || cmd === 'a' || cmd === 'b' || cmd === 'c' || cmd === 'd') {
+    const a = cmd === 'tebak' ? args.toLowerCase() : cmd;
     const good = ['a','umur'];
-    if (good.includes(a)) return ctx.reply('✅ *Bener!* 🎉', { parse_mode: 'Markdown' });
-    return ctx.reply('❌ Salah! Jawabannya *Umur* 😅', { parse_mode: 'Markdown' });
+    if (good.includes(a)) return ctx.reply('✅ *Benar!* 🎉', { parse_mode: 'Markdown' });
+    return ctx.reply('❌ Salah! Coba lagi 😅', { parse_mode: 'Markdown' });
   }
 
   // ── LAINNYA ──
