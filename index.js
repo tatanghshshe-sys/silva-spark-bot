@@ -12,6 +12,9 @@ const KT = 'https://komiktap.eu.cc';
 let status = 'starting', t0 = Date.now();
 const bot = new Bot(BOT_TOKEN);
 
+// Quiz state: chatId → { correct: 'A'|'B'|'C'|'D', question: string }
+const quizState = new Map();
+
 // ═══ HELPERS ═══
 async function dl(u, ep) {
   try {
@@ -75,12 +78,17 @@ bot.on('message:text', async (ctx) => {
     return ctx.reply(r.substring(0, 3900));
   }
   if (cmd === 'song') {
-    if (!args) return ctx.reply('🎵 *song [judul]*', { parse_mode: 'Markdown' });
+    if (!args) return ctx.reply('🎵 *song [judul lagu]*\nContoh: `song hello adele`', { parse_mode: 'Markdown' });
     const msg = await ctx.reply('🎵 Mencari...');
-    const r = await dl(args, '/api/download');
+    // Try komiktap first (needs YT URL)
+    if (args.startsWith('http')) {
+      const r = await dl(args, '/api/download');
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      if (!r.startsWith('❌')) return ctx.reply(r.substring(0, 3900));
+    }
+    // Fallback: YouTube search
     await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-    if (r.startsWith('❌')) return ctx.reply(`🎵 Ga ketemu. Cari manual:\nhttps://www.youtube.com/results?search_query=${encodeURIComponent(args)}`);
-    return ctx.reply(r.substring(0, 3900));
+    return ctx.reply(`🎵 *${args}*\n\n🔊 Cari & putar:\nhttps://www.youtube.com/results?search_query=${encodeURIComponent(args)}\n\n📥 Download MP3:\nhttps://ytmp3.cc/search?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
   }
 
   // ── AI / SEARCH ──
@@ -188,19 +196,33 @@ bot.on('message:text', async (ctx) => {
         const q = d.results[0];
         const ans = [...q.incorrect_answers, q.correct_answer].sort(()=>Math.random()-.5);
         const lbl = ['A','B','C','D'];
+        const correctIdx = ans.findIndex(a => a === q.correct_answer);
+        const correctLetter = lbl[correctIdx];
+        // Store quiz state
+        quizState.set(ctx.chat.id, { correct: correctLetter, question: q.question });
         let t = `🧠 *Asah Otak!*\n\n📝 ${q.question.replace(/&quot;/g,'"').replace(/&#039;/g,"'").replace(/&amp;/g,'&')}\n\n`;
         ans.forEach((a,i)=> t += `${lbl[i]}. ${a}\n`);
-        t += `\n_Jawab: tebak [A/B/C/D]_`;
+        t += `\n_Jawab: A / B / C / D_`;
         return ctx.reply(t, { parse_mode: 'Markdown' });
       }
     } catch {}
-    return ctx.reply('🧠 *Asah Otak:*\nApa yang naik tapi ga bisa turun?\nA. Umur  B. Tangga  C. Lift  D. Balon\n\nJawab: *tebak [A/B/C/D]*', { parse_mode: 'Markdown' });
+    quizState.set(ctx.chat.id, { correct: 'A', question: 'Apa yang naik tapi ga bisa turun?' });
+    return ctx.reply('🧠 *Asah Otak:*\nApa yang naik tapi ga bisa turun?\nA. Umur  B. Tangga  C. Lift  D. Balon\n\n_Jawab: A / B / C / D_', { parse_mode: 'Markdown' });
   }
-  if (cmd === 'tebak' || cmd === 'a' || cmd === 'b' || cmd === 'c' || cmd === 'd') {
+  if (cmd === 'tebak' || (['a','b','c','d'].includes(cmd) && !args)) {
     const a = cmd === 'tebak' ? args.toLowerCase() : cmd;
-    const good = ['a','umur'];
-    if (good.includes(a)) return ctx.reply('✅ *Benar!* 🎉', { parse_mode: 'Markdown' });
-    return ctx.reply('❌ Salah! Coba lagi 😅', { parse_mode: 'Markdown' });
+    if (!['a','b','c','d'].includes(a)) return ctx.reply('🎮 Jawab: *A / B / C / D*', { parse_mode: 'Markdown' });
+    const state = quizState.get(ctx.chat.id);
+    if (state && a === state.correct.toLowerCase()) {
+      quizState.delete(ctx.chat.id);
+      return ctx.reply(`✅ *Bener!* 🎉\nJawaban: *${state.correct}*`, { parse_mode: 'Markdown' });
+    }
+    if (state) {
+      quizState.delete(ctx.chat.id);
+      return ctx.reply(`❌ Salah! Jawabannya *${state.correct}* 😅`, { parse_mode: 'Markdown' });
+    }
+    // No active quiz
+    return ctx.reply('🎮 Ga ada quiz aktif. Ketik *asahotak* dulu!', { parse_mode: 'Markdown' });
   }
 
   // ── LAINNYA ──
