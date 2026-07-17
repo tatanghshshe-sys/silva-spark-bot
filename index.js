@@ -210,51 +210,55 @@ bot.on('message:text', async (ctx) => {
     }
   }
 
-  // ── TERABOX (kirim video langsung) ──
+  // ── TERABOX (download buffer → kirim langsung) ──
   if (cmd === 'tb') {
     if (!args) return ctx.reply('📦 *tb [url terabox]*', { parse_mode: 'Markdown' });
     if (!args.startsWith('http')) return ctx.reply('📦 Masukkan URL Terabox yang valid!', { parse_mode: 'Markdown' });
     const msg = await ctx.reply('⏳ Downloading Terabox...');
     try {
       const { data } = await axios.get(`${KT}/terabox?url=${encodeURIComponent(args)}`, { timeout: 30000 });
-      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      if ((data?.source === 'TeraCroot' || data?.status === 'success') && data?.files?.length) {
-        const vids = data.files.filter(f => /\.(mp4|mov|mkv|webm|avi)$/i.test(f.filename));
-        const imgs = data.files.filter(f => /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(f.filename));
-        const rest = data.files.filter(f => !vids.includes(f) && !imgs.includes(f));
-        let sent = 0;
-        // ── Kirim Video ──
-        for (const f of vids) {
-          try {
-            await ctx.replyWithVideo(f.dlink, { caption: f.filename.substring(0, 200) });
-            sent++;
-            await new Promise(r => setTimeout(r, 500));
-          } catch {}
-        }
-        // ── Kirim Foto ──
-        for (const f of imgs) {
-          try {
-            await ctx.replyWithPhoto(f.dlink, { caption: f.filename.substring(0, 200) });
-            sent++;
-            await new Promise(r => setTimeout(r, 300));
-          } catch {}
-        }
-        // ── Sisa: link ──
-        if (rest.length > 0 || sent < data.files.length) {
-          const unsent = data.files.filter((_,i) => !vids.slice(0,sent).includes(data.files[i]) && !imgs.slice(0,sent).includes(data.files[i]));
-          let txt = `📦 *TeraBox: ${data.total_files||data.files.length} file(s)*`;
-          if (sent > 0) txt += `\n✅ ${sent} file terkirim\n`;
-          txt += `\n📥 *Link Download:*\n`;
-          data.files.slice(0, 10).forEach((f,i) => {
-            const mb = f.size ? (f.size/1024/1024).toFixed(1) : '?';
-            txt += `\n*${i+1}.* [${f.filename}](${f.dlink}) — ${mb}MB`;
-          });
-          if (data.files.length > 10) txt += `\n_...dan ${data.files.length-10} lainnya_`;
-          return ctx.reply(txt.substring(0, 3900), { parse_mode: 'Markdown', link_preview_options: { is_disabled: true } });
-        }
-        if (sent > 0) return; // all sent
+      if (!data?.files?.length) {
+        await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+        return ctx.reply('❌ File tidak ditemukan.\n🔗 ' + args);
       }
-      return ctx.reply(`❌ Gagal ambil file.\n🔗 ${args}`);
+      await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `📦 ${data.files.length} file. Mengirim...`).catch(()=>{});
+      const vids = data.files.filter(f => /\.(mp4|mov|mkv)$/i.test(f.filename));
+      const imgs = data.files.filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f.filename));
+      let sent = 0, failed = 0;
+      const MAX = 5; // max files to send
+
+      // ── Kirim Video (download buffer) ──
+      for (const f of vids.slice(0, MAX)) {
+        if (f.size > 45*1024*1024) { failed++; continue; } // skip >45MB
+        try {
+          const res = await axios.get(f.dlink, { responseType: 'arraybuffer', timeout: 45000 });
+          await ctx.replyWithVideo(Buffer.from(res.data), { caption: f.filename.substring(0, 200) });
+          sent++;
+        } catch { failed++; }
+        await new Promise(r => setTimeout(r, 400));
+      }
+      // ── Kirim Foto (download buffer) ──
+      for (const f of imgs.slice(0, MAX)) {
+        if (f.size > 10*1024*1024) { failed++; continue; }
+        try {
+          const res = await axios.get(f.dlink, { responseType: 'arraybuffer', timeout: 30000 });
+          await ctx.replyWithPhoto(Buffer.from(res.data), { caption: f.filename.substring(0, 200) });
+          sent++;
+        } catch { failed++; }
+        await new Promise(r => setTimeout(r, 300));
+      }
+      // ── Summary ──
+      let txt = `📦 *TeraBox: ${data.total_files||data.files.length} file(s)*`;
+      if (sent > 0) txt += `\n✅ ${sent} terkirim`;
+      if (failed > 0) txt += ` | ❌ ${failed} gagal`;
+      txt += `\n\n📥 *Link semua file:*\n`;
+      data.files.slice(0, 10).forEach((f,i) => {
+        const mb = f.size ? (f.size/1024/1024).toFixed(1) : '?';
+        txt += `\n*${i+1}.* [${f.filename}](${f.dlink}) — ${mb}MB`;
+      });
+      if (data.files.length > 10) txt += `\n_...dan ${data.files.length-10} lainnya_`;
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      return ctx.reply(txt.substring(0, 3900), { parse_mode: 'Markdown', link_preview_options: { is_disabled: true } });
     } catch (e) {
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
       return ctx.reply(`❌ Error download.\n🔗 ${args}`);
