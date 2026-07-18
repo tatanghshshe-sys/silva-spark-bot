@@ -2,7 +2,6 @@ import { Bot, InlineKeyboard } from 'grammy';
 import http from 'http';
 import axios from 'axios';
 import { Buffer } from 'buffer';
-import * as cheerio from 'cheerio';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -21,7 +20,7 @@ const quizState = new Map();
 const tbCache = new Map();
 
 // ═══ HELPERS ═══
-// Scrape Instagram/Facebook meta tags for video URL (fallback #3)
+// Scrape Instagram/Facebook meta tags for video URL (fallback #3, no-dependency regex)
 async function scrapeFbIg(url) {
   try {
     const { data } = await axios.get(url, {
@@ -32,21 +31,16 @@ async function scrapeFbIg(url) {
         'Accept': 'text/html,application/xhtml+xml',
       }
     });
-    const $ = cheerio.load(data);
-    // Try og:video first
-    let vurl = $('meta[property="og:video"]').attr('content') 
-            || $('meta[property="og:video:secure_url"]').attr('content');
-    // Try Facebook's own video URLs
-    if (!vurl) {
-      const match = data.match(/(?:hd_src|sd_src)["']\s*:\s*["']([^"']+)["']/);
-      vurl = match?.[1];
-    }
-    if (!vurl) {
-      // Try to find any video URL in the page
-      const vm = data.match(/"playable_url"\s*:\s*"([^"]+)"/);
-      vurl = vm?.[1];
-    }
-    return vurl?.replace(/\\/g, '') || '';
+    // og:video meta tag
+    let m = data.match(/<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i);
+    if (m) return m[1].replace(/\\/g, '');
+    // Facebook hd_src / sd_src in JSON
+    m = data.match(/(?:hd_src|sd_src)["']\s*:\s*["']([^"']+)["']/);
+    if (m) return m[1].replace(/\\/g, '');
+    // Instagram playable_url in JSON
+    m = data.match(/"playable_url"\s*:\s*"([^"]+)"/);
+    if (m) return m[1].replace(/\\/g, '');
+    return '';
   } catch {
     return '';
   }
