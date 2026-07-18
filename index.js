@@ -148,9 +148,15 @@ bot.on('message:text', async (ctx) => {
         const r = await axios.get(`https://api-tiktokdl.vercel.app/api/download/facebook?url=${encodeURIComponent(args)}`, { timeout: 25000 });
         vurl = r.data?.data?.hd || r.data?.data?.sd;
       } catch {} }
-      // API 3: direct scrape
+      // API 3: fly.dev
+      if (!vurl) { try {
+        const fd = new URLSearchParams(); fd.append('url', args);
+        const r = await axios.post('https://facebook-video-downloader.fly.dev/app/main.php', fd.toString(), { timeout: 25000, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+        vurl = r.data?.links?.['Download High Quality'] || r.data?.links?.['Download Low Quality'];
+      } catch {} }
+      // API 4: direct scrape
       if (!vurl) {
-        const ctxMsg = await ctx.api.editMessageText(ctx.chat.id, msg.message_id, '⏳ Scraping FB page...').catch(()=>{});
+        await ctx.api.editMessageText(ctx.chat.id, msg.message_id, '⏳ Scraping FB page...').catch(()=>{});
         vurl = await scrapeFbIg(args);
       }
       if (vurl) {
@@ -190,7 +196,26 @@ bot.on('message:text', async (ctx) => {
           vurl = best[0]?.url;
         }
       } catch {} }
-      // API 3: direct scrape
+      // API 3: Downr
+      if (!vurl) { try {
+        const d3 = await axios.post('https://downr.org/.netlify/functions/nyt', { url: args }, { timeout: 25000, headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0', 'Origin': 'https://downr.org', 'Referer': 'https://downr.org/' } });
+        if (!d3.data?.error) {
+          const media = d3.data?.medias || [];
+          const vid = media.find(m => m.type === 'video');
+          const img = media.find(m => m.type === 'image');
+          vurl = vid?.url || img?.url || media[0]?.url;
+          if (!vid && img) isImage = true;
+        }
+      } catch {} }
+      // API 4: DownloadGram
+      if (!vurl) { try {
+        const fd = new URLSearchParams(); fd.append('url', args); fd.append('v', '3'); fd.append('lang', 'en');
+        const d4 = await axios.post('https://api.downloadgram.org/media', fd.toString(), { timeout: 25000, headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'Mozilla/5.0 (Android 10; Mobile; rv:131.0)', 'Referer': 'https://downloadgram.org/', 'Origin': 'https://downloadgram.org' } });
+        const m = d4.data?.match(/<source[^>]+src=["']([^"']+)["']/) || d4.data?.match(/href=["']([^"']+)["'][^>]*download/);
+        if (m) vurl = m[1];
+        if (vurl && /\.(jpg|jpeg|png|webp)/i.test(vurl)) isImage = true;
+      } catch {} }
+      // API 5: direct scrape
       if (!vurl) {
         await ctx.api.editMessageText(ctx.chat.id, msg.message_id, '⏳ Scraping IG page...').catch(()=>{});
         vurl = await scrapeFbIg(args);
