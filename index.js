@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import http from 'http';
 import axios from 'axios';
 import { Buffer } from 'buffer';
+import * as cheerio from 'cheerio';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -20,6 +21,37 @@ const quizState = new Map();
 const tbCache = new Map();
 
 // ═══ HELPERS ═══
+// Scrape Instagram/Facebook meta tags for video URL (fallback #3)
+async function scrapeFbIg(url) {
+  try {
+    const { data } = await axios.get(url, {
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml',
+      }
+    });
+    const $ = cheerio.load(data);
+    // Try og:video first
+    let vurl = $('meta[property="og:video"]').attr('content') 
+            || $('meta[property="og:video:secure_url"]').attr('content');
+    // Try Facebook's own video URLs
+    if (!vurl) {
+      const match = data.match(/(?:hd_src|sd_src)["']\s*:\s*["']([^"']+)["']/);
+      vurl = match?.[1];
+    }
+    if (!vurl) {
+      // Try to find any video URL in the page
+      const vm = data.match(/"playable_url"\s*:\s*"([^"]+)"/);
+      vurl = vm?.[1];
+    }
+    return vurl?.replace(/\\/g, '') || '';
+  } catch {
+    return '';
+  }
+}
+
 async function dl(u, ep) {
   try {
     const { data } = await axios.get(`${KT}${ep}?url=${encodeURIComponent(u)}`, { timeout: 30000 });
@@ -122,6 +154,11 @@ bot.on('message:text', async (ctx) => {
         const r = await axios.get(`https://api-tiktokdl.vercel.app/api/download/facebook?url=${encodeURIComponent(args)}`, { timeout: 25000 });
         vurl = r.data?.data?.hd || r.data?.data?.sd;
       } catch {} }
+      // API 3: direct scrape
+      if (!vurl) {
+        const ctxMsg = await ctx.api.editMessageText(ctx.chat.id, msg.message_id, '⏳ Scraping FB page...').catch(()=>{});
+        vurl = await scrapeFbIg(args);
+      }
       if (vurl) {
         const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000, headers: { 'User-Agent': 'Mozilla/5.0' } });
         await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
@@ -159,6 +196,12 @@ bot.on('message:text', async (ctx) => {
           vurl = best[0]?.url;
         }
       } catch {} }
+      // API 3: direct scrape
+      if (!vurl) {
+        await ctx.api.editMessageText(ctx.chat.id, msg.message_id, '⏳ Scraping IG page...').catch(()=>{});
+        vurl = await scrapeFbIg(args);
+        if (vurl) isImage = /\.(jpg|jpeg|png|webp)(\?|$)/i.test(vurl);
+      }
       if (vurl) {
         const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000, headers: { 'User-Agent': 'Mozilla/5.0' } });
         await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
