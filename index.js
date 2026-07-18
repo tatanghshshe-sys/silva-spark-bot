@@ -405,7 +405,7 @@ bot.on('message:text', async (ctx) => {
     const msg = await ctx.reply('📌 Mencari gambar...');
     try {
       // Kirim foto random dulu (Lorem Picsum)
-      await ctx.replyWithPhoto(`https://picsum.photos/800/600?random=${Date.now()}`, { caption: `📌 *${args}*` });
+      await ctx.replyWithPhoto(`https://picsum.photos/800/600?random=${Date.now()}`, { caption: `📌 ${args}`, parse_mode: 'Markdown' });
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
       // Juga kasih Pinterest link
       return ctx.reply(`📌 *${args}*\n🔍 Lebih banyak di Pinterest:\nhttps://id.pinterest.com/search/pins/?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
