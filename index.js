@@ -404,11 +404,19 @@ bot.on('message:text', async (ctx) => {
     if (!args) return ctx.reply('📌 *pin [keyword]*\nContoh: `pin kucing`', { parse_mode: 'Markdown' });
     const msg = await ctx.reply('📌 Mencari gambar...');
     try {
-      // Kirim foto random dulu (Lorem Picsum)
-      await ctx.replyWithPhoto(`https://picsum.photos/800/600?random=${Date.now()}`, { caption: `📌 ${args}`, parse_mode: 'Markdown' });
-      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      // Juga kasih Pinterest link
-      return ctx.reply(`📌 *${args}*\n🔍 Lebih banyak di Pinterest:\nhttps://id.pinterest.com/search/pins/?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
+      // Step 1: Wikimedia search
+      const s = await axios.get(`https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(args)}&srnamespace=6&format=json&srlimit=1`, { timeout: 10000 });
+      const pageid = s?.data?.query?.search?.[0]?.pageid;
+      if (pageid) {
+        // Step 2: Get image thumbnail
+        const i = await axios.get(`https://commons.wikimedia.org/w/api.php?action=query&prop=pageimages&pageids=${pageid}&format=json&pithumbsize=800`, { timeout: 10000 });
+        const thumb = i?.data?.query?.pages?.[String(pageid)]?.thumbnail?.source;
+        if (thumb) {
+          await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+          await ctx.replyWithPhoto(thumb, { caption: `📌 ${args}`, parse_mode: 'Markdown' });
+          return ctx.reply(`📌 *${args}*\n🔍 Lebih banyak di Pinterest:\nhttps://id.pinterest.com/search/pins/?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
+        }
+      }
     } catch {}
     await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
     return ctx.reply(`📌 *${args}*\n🔍 Pinterest:\nhttps://id.pinterest.com/search/pins/?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
