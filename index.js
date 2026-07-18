@@ -127,10 +127,10 @@ bot.on('message:text', async (ctx) => {
       if (data?.download_quality_sd) r += `📥 *SD:* [Klik Download](${data.download_quality_sd})\n`;
       if (data?.download_audio) r += `🎵 *Audio:* [Klik Download](${data.download_audio})\n`;
       if (r) return ctx.reply(r, { parse_mode: 'Markdown' });
-      return ctx.reply(`❌ ${data?.description || 'Gagal.'}\n🔗 ${args}`);
+      return ctx.reply(`❌ API FB lagi down.\n🔗 Manual: fdown.net atau savefrom.net\n🔗 ${args}`);
     } catch (e) {
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      return ctx.reply(`❌ Error.\n🔗 ${args}`);
+      return ctx.reply(`❌ API FB lagi down.\n🔗 Manual: fdown.net atau savefrom.net\n🔗 ${args}`);
     }
   }
 
@@ -156,10 +156,10 @@ bot.on('message:text', async (ctx) => {
       if (data?.download_quality_sd) r += `📥 *SD:* [Klik Download](${data.download_quality_sd})\n`;
       if (data?.url) r += `📥 [Download](${data.url})\n`;
       if (r) return ctx.reply(r, { parse_mode: 'Markdown' });
-      return ctx.reply(`❌ ${data?.error || 'Gagal.'}\n🔗 ${args}`);
+      return ctx.reply(`❌ API IG lagi down.\n🔗 Manual: saveinsta.app atau snapinsta.app\n🔗 ${args}`);
     } catch (e) {
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      return ctx.reply(`❌ Error.\n🔗 ${args}`);
+      return ctx.reply(`❌ API IG lagi down.\n🔗 Manual: saveinsta.app atau snapinsta.app\n🔗 ${args}`);
     }
   }
 
@@ -253,16 +253,29 @@ bot.on('message:text', async (ctx) => {
 
   // ── SONG ──
   if (cmd === 'song') {
-    if (!args) return ctx.reply('🎵 *song [judul lagu]*\nContoh: `song hello adele`', { parse_mode: 'Markdown' });
-    const msg = await ctx.reply('🎵 Mencari...');
-    // Try komiktap first (needs YT URL)
+    if (!args) return ctx.reply('🎵 *song [judul/url]*\nContoh: `song hello adele` atau `song https://youtu.be/xxx`', { parse_mode: 'Markdown' });
+    // If URL → same as ytmp3 (loader.to)
     if (args.startsWith('http')) {
-      const r = await dl(args, '/api/download');
-      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      if (!r.startsWith('❌')) return ctx.reply(r.substring(0, 3900));
+      const msg = await ctx.reply('⏳ Downloading audio...');
+      try {
+        const init = await axios.get(`https://loader.to/ajax/download.php?url=${encodeURIComponent(args)}&format=mp3`, { timeout: 15000 });
+        if (!init.data?.success || !init.data?.progress_url) throw new Error('Init failed');
+        await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `⏳ ${init.data.title || 'Processing'}...`).catch(()=>{});
+        let durl = '';
+        for (let i = 0; i < 15; i++) {
+          await new Promise(r => setTimeout(r, 2500));
+          try { const prog = await axios.get(init.data.progress_url, { timeout: 10000 }); if (prog.data?.download_url) { durl = prog.data.download_url; break; } } catch {}
+        }
+        if (!durl) throw new Error('Timeout');
+        const res = await axios.get(durl, { responseType: 'arraybuffer', timeout: 90000 });
+        await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+        await ctx.replyWithAudio(Buffer.from(res.data), { title: init.data.title?.substring(0, 64) || 'Audio', caption: `🎵 ${init.data.title || ''}`.substring(0, 200), parse_mode: 'Markdown' });
+        return;
+      } catch {
+        await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      }
     }
-    // Fallback: YouTube search
-    await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+    // Keyword search
     return ctx.reply(`🎵 *${args}*\n\n🔊 Cari & putar:\nhttps://www.youtube.com/results?search_query=${encodeURIComponent(args)}\n\n📥 Download MP3:\nhttps://ytmp3.cc/search?q=${encodeURIComponent(args)}`, { parse_mode: 'Markdown' });
   }
 
