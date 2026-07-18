@@ -163,27 +163,36 @@ bot.on('message:text', async (ctx) => {
     }
   }
 
-  // ── YOUTUBE MP3 (kirim audio langsung) ──
+  // ── YOUTUBE MP3 (via loader.to - kirim audio langsung) ──
   if (cmd === 'ytmp3') {
-    if (!args) return ctx.reply('📥 *ytmp3 [url youtube]*', { parse_mode: 'Markdown' });
+    if (!args) return ctx.reply('📥 *ytmp3 [url youtube]*\nContoh: `ytmp3 https://youtu.be/xxx`', { parse_mode: 'Markdown' });
     if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL YouTube yang valid!', { parse_mode: 'Markdown' });
-    const msg = await ctx.reply('⏳ Downloading YT MP3...');
+    const msg = await ctx.reply('⏳ Downloading audio...');
     try {
-      const { data } = await axios.get(`${KT}/api/download?url=${encodeURIComponent(args)}`, { timeout: 30000 });
-      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      // Try sending audio/video directly
-      const durl = data?.download || data?.url || data?.download_quality_hd;
-      if (durl) {
-        try { await ctx.replyWithAudio(durl, { caption: '🎵 YouTube MP3' }); return; } catch {}
-        try { await ctx.replyWithVideo(durl, { caption: '📥 YouTube' }); return; } catch {}
+      // Step 1: Initiate download via loader.to
+      const init = await axios.get(`https://loader.to/ajax/download.php?url=${encodeURIComponent(args)}&format=mp3`, { timeout: 15000 });
+      if (!init.data?.success || !init.data?.progress_url) {
+        await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+        return ctx.reply(`❌ Gagal memproses.\nManual: https://ytmp3.cc/`);
       }
-      // Fallback: show link
-      if (durl) return ctx.reply(`📥 [Download MP3](${durl})\n🔗 ${args}`, { parse_mode: 'Markdown' });
-      if (data?.success === false) return ctx.reply(`❌ ${data.error || 'Gagal.'}\n\n📥 Download manual: https://ytmp3.cc/`);
-      return ctx.reply(`❌ Gagal download.\n🔗 ${args}`);
+      await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `⏳ ${init.data.title || 'Processing'}...`).catch(()=>{});
+      // Step 2: Poll for download URL
+      let durl = '';
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 2500));
+        try {
+          const prog = await axios.get(init.data.progress_url, { timeout: 10000 });
+          if (prog.data?.download_url) { durl = prog.data.download_url; break; }
+        } catch {}
+      }
+      if (!durl) throw new Error('Timeout');
+      // Step 3: Download buffer
+      const res = await axios.get(durl, { responseType: 'arraybuffer', timeout: 90000 });
+      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+      await ctx.replyWithAudio(Buffer.from(res.data), { title: init.data.title?.substring(0, 64) || 'YouTube MP3', caption: `🎵 ${init.data.title || 'YouTube MP3'}`.substring(0, 200), parse_mode: 'Markdown' });
     } catch (e) {
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      return ctx.reply(`❌ Error. Gunakan: https://ytmp3.cc/`);
+      return ctx.reply(`❌ Download gagal.\n🔗 Manual: https://ytmp3.cc/\n🔗 ${args}`);
     }
   }
 
