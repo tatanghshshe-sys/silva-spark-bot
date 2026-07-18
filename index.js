@@ -105,61 +105,75 @@ bot.on('message:text', async (ctx) => {
   const cmd = parts[0].toLowerCase();
   const args = parts.slice(1).join(' ');
 
-  // ── FACEBOOK (download buffer → kirim langsung) ──
+  // ── FACEBOOK (multi-API dari Kometika: siputzx + vercel) ──
   if (cmd === 'fb') {
     if (!args) return ctx.reply('📥 *fb [url facebook]*', { parse_mode: 'Markdown' });
     if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL Facebook yang valid!', { parse_mode: 'Markdown' });
     const msg = await ctx.reply('⏳ Downloading FB...');
     try {
-      const { data } = await axios.get(`${KT}/api/facebook?url=${encodeURIComponent(args)}`, { timeout: 30000 });
-      const vurl = data?.download_quality_hd || data?.download_quality_sd;
+      let vurl = '';
+      // API 1: siputzx savefrom
+      try {
+        const { data } = await axios.post('https://api.siputzx.my.id/api/d/savefrom', { url: args }, { timeout: 25000, headers: { 'Content-Type': 'application/json' } });
+        vurl = data?.data?.[0]?.data?.[0]?.hd?.url || data?.data?.[0]?.data?.[0]?.sd?.url;
+      } catch {}
+      // API 2: vercel
+      if (!vurl) { try {
+        const r = await axios.get(`https://api-tiktokdl.vercel.app/api/download/facebook?url=${encodeURIComponent(args)}`, { timeout: 25000 });
+        vurl = r.data?.data?.hd || r.data?.data?.sd;
+      } catch {} }
       if (vurl) {
-        try {
-          const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-          await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-          await ctx.replyWithVideo(Buffer.from(res.data), { caption: '📥 Facebook' });
-          return;
-        } catch {}
+        const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+        await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+        await ctx.replyWithVideo(Buffer.from(res.data), { caption: '📥 Facebook' });
+        return;
       }
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      let r = '';
-      if (data?.download_quality_hd) r += `📥 *HD:* [Klik Download](${data.download_quality_hd})\n`;
-      if (data?.download_quality_sd) r += `📥 *SD:* [Klik Download](${data.download_quality_sd})\n`;
-      if (data?.download_audio) r += `🎵 *Audio:* [Klik Download](${data.download_audio})\n`;
-      if (r) return ctx.reply(r, { parse_mode: 'Markdown' });
-      return ctx.reply(`❌ API FB lagi down.\n🔗 Manual: fdown.net atau savefrom.net\n🔗 ${args}`);
+      return ctx.reply(`❌ Gagal download FB.\n🔗 Manual: fdown.net`);
     } catch (e) {
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      return ctx.reply(`❌ API FB lagi down.\n🔗 Manual: fdown.net atau savefrom.net\n🔗 ${args}`);
+      return ctx.reply(`❌ Gagal download FB.\n🔗 Manual: fdown.net`);
     }
   }
 
-  // ── INSTAGRAM (download buffer → kirim langsung) ──
+  // ── INSTAGRAM (multi-API dari Kometika: danzy + siputzx) ──
   if (cmd === 'ig') {
     if (!args) return ctx.reply('📥 *ig [url instagram]*', { parse_mode: 'Markdown' });
     if (!args.startsWith('http')) return ctx.reply('📥 Masukkan URL Instagram yang valid!', { parse_mode: 'Markdown' });
     const msg = await ctx.reply('⏳ Downloading IG...');
     try {
-      const { data } = await axios.get(`${KT}/api/instagram?url=${encodeURIComponent(args)}`, { timeout: 30000 });
-      const vurl = data?.download_quality_hd || data?.download_quality_sd || data?.url || data?.download;
+      let vurl = '', isImage = false;
+      // API 1: Danzy
+      try {
+        const { data } = await axios.get(`https://api.danzy.web.id/api/download/instagram?url=${encodeURIComponent(args)}`, { timeout: 20000 });
+        if (data?.status && data?.result) {
+          vurl = data.result.videos?.[0] || data.result.images?.[0];
+          if (data.result.images?.[0]) isImage = true;
+        }
+      } catch {}
+      // API 2: siputzx fastdl
+      if (!vurl) { try {
+        const { data } = await axios.get(`https://api.siputzx.my.id/api/d/fastdl?url=${encodeURIComponent(args)}`, { timeout: 30000 });
+        if (data?.status && data?.data?.url) {
+          const best = data.data.url.sort((a,b) => b.quality - a.quality);
+          vurl = best[0]?.url;
+        }
+      } catch {} }
       if (vurl) {
-        try {
-          const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-          await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+        const res = await axios.get(vurl, { responseType: 'arraybuffer', timeout: 60000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+        await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
+        if (isImage) {
+          await ctx.replyWithPhoto(Buffer.from(res.data), { caption: '📥 Instagram' });
+        } else {
           await ctx.replyWithVideo(Buffer.from(res.data), { caption: '📥 Instagram' });
-          return;
-        } catch {}
+        }
+        return;
       }
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      let r = '';
-      if (data?.download_quality_hd) r += `📥 *HD:* [Klik Download](${data.download_quality_hd})\n`;
-      if (data?.download_quality_sd) r += `📥 *SD:* [Klik Download](${data.download_quality_sd})\n`;
-      if (data?.url) r += `📥 [Download](${data.url})\n`;
-      if (r) return ctx.reply(r, { parse_mode: 'Markdown' });
-      return ctx.reply(`❌ API IG lagi down.\n🔗 Manual: saveinsta.app atau snapinsta.app\n🔗 ${args}`);
+      return ctx.reply(`❌ Gagal download IG.\n🔗 Manual: saveinsta.app`);
     } catch (e) {
       await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(()=>{});
-      return ctx.reply(`❌ API IG lagi down.\n🔗 Manual: saveinsta.app atau snapinsta.app\n🔗 ${args}`);
+      return ctx.reply(`❌ Gagal download IG.\n🔗 Manual: saveinsta.app`);
     }
   }
 
